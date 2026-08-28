@@ -9,8 +9,11 @@ export const treeKey = (hash: string) => `trees/${hash}.json.gz`;
  */
 export async function putTree(env: Env, hash: string, files: WireFile[]): Promise<string> {
   const key = treeKey(hash);
-  const body = new Response(JSON.stringify(files)).body!.pipeThrough(new CompressionStream('gzip'));
-  await env.TREES.put(key, body, {
+  const gzip = new Response(JSON.stringify(files)).body!.pipeThrough(new CompressionStream('gzip'));
+  // R2 refuses a stream of unknown length, and a compression stream has none,
+  // so buffer it. File lists are hundreds of KB at worst.
+  const bytes = await new Response(gzip).arrayBuffer();
+  await env.TREES.put(key, bytes, {
     httpMetadata: { contentType: 'application/json', contentEncoding: 'gzip' },
   });
   return key;

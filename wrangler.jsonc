@@ -12,7 +12,7 @@
     "directory": "./web/dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/v1/*", "/api/*"]
+    "run_worker_first": ["/v1/*", "/api/*", "/healthz"]
   },
 
   "d1_databases": [
@@ -20,7 +20,7 @@
       "binding": "DB",
       "database_name": "flockatime",
       // Fill in from `wrangler d1 create flockatime`.
-      "database_id": "PLACEHOLDER_RUN_WRANGLER_D1_CREATE",
+      "database_id": "00000000-0000-0000-0000-000000000000",
       "migrations_dir": "migrations"
     }
   ],

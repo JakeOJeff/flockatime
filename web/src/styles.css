@@ -1,0 +1,287 @@
+/*
+ * Roles, not raw hex. Dark values are declared under both the OS media query
+ * and the data-theme scope so an explicit toggle wins in either direction.
+ * Palette slots come from the validated reference set (blue / red diverging).
+ */
+:root {
+  color-scheme: light;
+
+  --surface-0: #f6f5f3;
+  --surface-1: #fcfcfb;
+  --border: #e3e1dc;
+
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #86847e;
+
+  --series-1: #2a78d6; /* additions, totals */
+  --series-2: #e34948; /* removals */
+  --grid: #eceae5;
+
+  --radius: 10px;
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --surface-0: #111110;
+    --surface-1: #1a1a19;
+    --border: #33332f;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #8e8d83;
+    --series-1: #3987e5;
+    --series-2: #e66767;
+    --grid: #2a2a27;
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --surface-0: #111110;
+  --surface-1: #1a1a19;
+  --border: #33332f;
+  --text-primary: #ffffff;
+  --text-secondary: #c3c2b7;
+  --text-muted: #8e8d83;
+  --series-1: #3987e5;
+  --series-2: #e66767;
+  --grid: #2a2a27;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--surface-0);
+  color: var(--text-primary);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 32px 20px 72px;
+}
+
+header.top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 28px;
+}
+
+h1 {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+/* Filters live in one row above the charts. */
+.controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+select,
+button.chip {
+  font: inherit;
+  color: var(--text-primary);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+button.chip[aria-pressed='true'] {
+  border-color: var(--series-1);
+  color: var(--series-1);
+}
+
+.card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  margin-bottom: 18px;
+}
+
+.card h2 {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0 0 2px;
+  letter-spacing: 0.01em;
+}
+
+.card .sub {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0 0 16px;
+}
+
+/* KPI row of stat tiles — headline numbers, not a one-bar chart. */
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.tile {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+
+.tile .label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.tile .value {
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  margin-top: 2px;
+}
+
+.tile .delta {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Wide content scrolls inside its own box; the page body never does. */
+.scroll-x {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+th,
+td {
+  text-align: right;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+th:first-child,
+td:first-child {
+  text-align: left;
+}
+
+th {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+td.hash {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* Legend: identity is never carried by color alone. */
+.legend {
+  display: flex;
+  gap: 14px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 10px;
+}
+
+.legend span.key {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+.chart-shell {
+  position: relative;
+}
+
+.tip {
+  position: absolute;
+  pointer-events: none;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.14);
+  white-space: nowrap;
+  z-index: 5;
+}
+
+.tip .t-label {
+  color: var(--text-muted);
+  margin-bottom: 3px;
+}
+
+.tip .t-row {
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  font-variant-numeric: tabular-nums;
+}
+
+.empty {
+  padding: 40px 0;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+/* Live indicator: the page polls, so show that it is actually keeping up. */
+.live {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-left: 8px;
+  border-radius: 50%;
+  background: var(--series-1);
+  vertical-align: middle;
+  animation: pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live { animation: none; opacity: 1; }
+}

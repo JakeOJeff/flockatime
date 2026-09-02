@@ -170,6 +170,30 @@ button.chip[aria-pressed='true'] {
   font-variant-numeric: tabular-nums;
 }
 
+/* Queue-replay notice: an advisory about how to read the charts, not an error,
+   so it is toned down from the error card rather than alarm-coloured. */
+.notice {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--series-1);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  margin-bottom: 18px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* Marks a commit whose tree was dirty at some point while it was HEAD. */
+.dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--series-2);
+  vertical-align: middle;
+}
+
 /* Wide content scrolls inside its own box; the page body never does. */
 .scroll-x {
   overflow-x: auto;

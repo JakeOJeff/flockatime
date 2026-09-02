@@ -1,11 +1,18 @@
 import { Hono } from 'hono';
-import type { Env } from './types';
+import type { Env, WireFile } from './types';
 import { requireDashboard } from './auth';
 import { getTree } from './trees';
 
 type Ctx = { Bindings: Env };
 
 const ACCOUNT = 'local'; // single-user build
+
+/**
+ * A snapshot that reached the server this long after it was captured did not
+ * arrive live — it sat in the offline queue. Normal ingest is sub-second, so
+ * anything past a couple of minutes is a flush rather than jitter.
+ */
+const LAG_THRESHOLD_SECONDS = 120;
 
 export const api = new Hono<Ctx>();
 
@@ -28,8 +35,8 @@ async function projectId(env: Env, name: string): Promise<number | null> {
 api.get('/api/projects', async (c) => {
   const { results } = await c.env.DB.prepare(
     `SELECT p.name,
-            s.captured_at, s.file_count, s.total_lines, s.tree_hash,
-            s.git_branch, s.git_dirty, s.git_ahead, s.agent_version
+            s.captured_at, s.received_at, s.file_count, s.total_lines, s.tree_hash,
+            s.git_head, s.git_branch, s.git_dirty, s.git_ahead, s.agent_version
        FROM projects p
        LEFT JOIN snapshots s ON s.id = (
          SELECT id FROM snapshots WHERE project_id = p.id ORDER BY captured_at DESC LIMIT 1
@@ -49,9 +56,9 @@ api.get('/api/projects/:name/timeline', async (c) => {
   if (id === null) return c.json({ error: 'unknown project' }, 404);
 
   const { results } = await c.env.DB.prepare(
-    `SELECT captured_at, file_count, total_lines, unchanged,
+    `SELECT captured_at, received_at, file_count, total_lines, unchanged,
             files_added, files_removed, files_modified, lines_delta,
-            git_branch, git_dirty, git_ahead
+            git_head, git_branch, git_dirty, git_ahead
        FROM snapshots
       WHERE project_id = ?1 AND captured_at >= ?2
       ORDER BY captured_at ASC`,
@@ -134,17 +141,23 @@ api.get('/api/projects/:name/summary', async (c) => {
   if (id === null) return c.json({ error: 'unknown project' }, 404);
   const from = windowStart(c);
 
+  // received_at is the server clock and the only trustworthy one here. The
+  // charts are still plotted on captured_at, which is what the agent believed,
+  // so the spread between the two is reported rather than silently absorbed.
   const totals = await c.env.DB.prepare(
     `SELECT COUNT(*)                                             AS ticks,
             SUM(CASE WHEN unchanged = 0 THEN 1 ELSE 0 END)       AS active_ticks,
             SUM(CASE WHEN lines_delta > 0 THEN lines_delta END)  AS lines_added,
             SUM(CASE WHEN lines_delta < 0 THEN -lines_delta END) AS lines_removed,
             SUM(COALESCE(files_added,0) + COALESCE(files_removed,0)
-                + COALESCE(files_modified,0))                    AS files_touched
+                + COALESCE(files_modified,0))                    AS files_touched,
+            SUM(CASE WHEN received_at - captured_at > ?3
+                     THEN 1 ELSE 0 END)                          AS delayed_ticks,
+            MAX(received_at - captured_at)                       AS max_lag_seconds
        FROM snapshots
       WHERE project_id = ?1 AND captured_at >= ?2`,
   )
-    .bind(id, from)
+    .bind(id, from, LAG_THRESHOLD_SECONDS)
     .first();
 
   // strftime on a unix column gives UTC days. Good enough for a roll-up; swap
@@ -161,13 +174,59 @@ api.get('/api/projects/:name/summary', async (c) => {
     .bind(id, from)
     .all();
 
-  return c.json({ totals, daily });
+  return c.json({ totals, daily, lag_threshold_seconds: LAG_THRESHOLD_SECONDS });
+});
+
+/**
+ * Work grouped by the commit that was HEAD while it happened.
+ *
+ * The agent has always sent git.head on every snapshot and nothing ever read it
+ * back, so the one column linking a tree to a commit sat unused. Grouping on it
+ * turns the timeline into "what you did on top of each commit": the span is how
+ * long that commit stayed HEAD, the deltas are the work done during it.
+ */
+api.get('/api/projects/:name/commits', async (c) => {
+  const id = await projectId(c.env, c.req.param('name'));
+  if (id === null) return c.json({ error: 'unknown project' }, 404);
+
+  const { results } = await c.env.DB.prepare(
+    `SELECT git_head,
+            MAX(git_branch)                                      AS git_branch,
+            MIN(captured_at)                                     AS first_seen,
+            MAX(captured_at)                                     AS last_seen,
+            MAX(captured_at) - MIN(captured_at)                  AS seconds,
+            COUNT(*)                                             AS ticks,
+            SUM(CASE WHEN unchanged = 0 THEN 1 ELSE 0 END)       AS active_ticks,
+            SUM(CASE WHEN lines_delta > 0 THEN lines_delta END)  AS lines_added,
+            SUM(CASE WHEN lines_delta < 0 THEN -lines_delta END) AS lines_removed,
+            SUM(COALESCE(files_added,0) + COALESCE(files_removed,0)
+                + COALESCE(files_modified,0))                    AS files_touched,
+            MAX(git_dirty)                                       AS ever_dirty
+       FROM snapshots
+      WHERE project_id = ?1 AND captured_at >= ?2 AND git_head IS NOT NULL
+      GROUP BY git_head
+      ORDER BY last_seen DESC
+      LIMIT 50`,
+  )
+    .bind(id, windowStart(c))
+    .all();
+
+  return c.json({ commits: results });
 });
 
 /**
  * Per-file churn ranking. Paths are hashes and always will be, but "one file
  * absorbed 60% of your churn" is still real signal, and the hashes can be
  * mapped back locally by whoever runs the agent.
+ *
+ * The agent sends a line count on every file record. Ranking on revision count
+ * alone discarded it and scored a typo the same as a rewrite, so the ordering
+ * is by lines moved now, with the revision count kept alongside.
+ *
+ * `lines_moved` sums |net line change| across revisions, so an edit that
+ * replaces a line without changing the count reads as 0. True diff-line churn
+ * would need line-level hashes the agent does not send; this is the weaker
+ * number that the wire format actually supports.
  *
  * This is the one endpoint that reads R2, so it is deliberately narrow: it
  * walks distinct trees in the window rather than every tick.
@@ -185,18 +244,30 @@ api.get('/api/projects/:name/churn', async (c) => {
     .bind(id, windowStart(c))
     .all<{ tree_hash: string }>();
 
-  const changes = new Map<string, number>();
-  let previous: Map<string, string> | null = null;
+  interface Churn {
+    revisions: number;
+    lines_moved: number;
+    lines: number;
+  }
+
+  const state = (f: WireFile) => ({ content: f.content_hash, lines: f.lines ?? 0 });
+
+  const changes = new Map<string, Churn>();
+  let previous: Map<string, ReturnType<typeof state>> | null = null;
 
   for (const { tree_hash } of results) {
     const files = await getTree(c.env, tree_hash);
     if (!files) continue;
-    const current = new Map(files.map((f) => [f.path_hash, f.content_hash]));
+    const current = new Map(files.map((f) => [f.path_hash, state(f)]));
     if (previous) {
-      for (const [path, content] of current) {
+      for (const [path, now] of current) {
         const before = previous.get(path);
-        if (before !== undefined && before !== content) {
-          changes.set(path, (changes.get(path) ?? 0) + 1);
+        if (before !== undefined && before.content !== now.content) {
+          const entry = changes.get(path) ?? { revisions: 0, lines_moved: 0, lines: 0 };
+          entry.revisions++;
+          entry.lines_moved += Math.abs(now.lines - before.lines);
+          entry.lines = now.lines; // the most recent size wins
+          changes.set(path, entry);
         }
       }
     }
@@ -204,9 +275,11 @@ api.get('/api/projects/:name/churn', async (c) => {
   }
 
   const top = [...changes.entries()]
-    .sort((a, b) => b[1] - a[1])
+    // Lines first, revisions as the tie-break: a file rewritten once outranks
+    // one saved twenty times without ever growing.
+    .sort((a, b) => b[1].lines_moved - a[1].lines_moved || b[1].revisions - a[1].revisions)
     .slice(0, 25)
-    .map(([path_hash, revisions]) => ({ path_hash, revisions }));
+    .map(([path_hash, v]) => ({ path_hash, ...v }));
 
   return c.json({ files: top, trees_compared: results.length });
 });

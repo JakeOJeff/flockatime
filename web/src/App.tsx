@@ -2,12 +2,16 @@ import { useEffect, useState } from 'react';
 import {
   clock,
   getChurn,
+  getCommits,
   getSessions,
   getSummary,
   getTimeline,
   humanDuration,
   listProjects,
   num,
+  shortSha,
+  type ChurnRow,
+  type CommitRow,
   type ProjectRow,
   type SessionRow,
   type SnapshotRow,
@@ -27,7 +31,8 @@ export default function App() {
   const [timeline, setTimeline] = useState<SnapshotRow[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [sessions, setSessions] = useState<SessionRow[]>([]);
-  const [hot, setHot] = useState<{ path_hash: string; revisions: number }[]>([]);
+  const [commits, setCommits] = useState<CommitRow[]>([]);
+  const [hot, setHot] = useState<ChurnRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<number | null>(null);
 
@@ -51,13 +56,15 @@ export default function App() {
       getTimeline(selected, days),
       getSummary(selected, days),
       getSessions(selected, days),
+      getCommits(selected, days),
       getChurn(selected, days),
     ])
-      .then(([t, s, ss, c]) => {
+      .then(([t, s, ss, cm, c]) => {
         if (!live) return;
         setTimeline(t.snapshots);
         setSummary(s);
         setSessions(ss.sessions);
+        setCommits(cm.commits);
         setHot(c.files);
       })
       .catch((e) => live && setError(String(e)));
@@ -76,16 +83,18 @@ export default function App() {
     const poll = async () => {
       if (document.hidden) return;
       try {
-        const [t, s, ss, p] = await Promise.all([
+        const [t, s, ss, cm, p] = await Promise.all([
           getTimeline(selected, days),
           getSummary(selected, days),
           getSessions(selected, days),
+          getCommits(selected, days),
           listProjects(),
         ]);
         if (!live) return;
         setTimeline(t.snapshots);
         setSummary(s);
         setSessions(ss.sessions);
+        setCommits(cm.commits);
         setProjects(p.projects);
         setLastSync(Date.now());
       } catch {
@@ -103,6 +112,12 @@ export default function App() {
   const current = projects?.find((p) => p.name === selected) ?? null;
   const totals = summary?.totals;
   const activeSeconds = sessions.reduce((acc, s) => acc + s.seconds, 0);
+
+  // Snapshots that came out of the offline queue were captured long before they
+  // arrived. Every chart here is drawn on the agent clock, so say so rather than
+  // letting a replayed backlog read as live activity.
+  const delayedTicks = totals?.delayed_ticks ?? 0;
+  const maxLag = totals?.max_lag_seconds ?? 0;
 
   return (
     <div className="wrap">
@@ -145,6 +160,15 @@ export default function App() {
 
       {error && <div className="card">Could not load data: {error}</div>}
 
+      {delayedTicks > 0 && (
+        <div className="notice">
+          <strong>{num(delayedTicks)}</strong> of these snapshots were replayed from the agent's
+          offline queue, the latest arriving <strong>{humanDuration(maxLag)}</strong> after it was
+          captured. Charts are plotted on the agent clock, so that work appears when it happened —
+          not when it landed here.
+        </div>
+      )}
+
       {projects !== null && projects.length === 0 && (
         <div className="card">
           <h2>No snapshots yet</h2>
@@ -169,11 +193,9 @@ export default function App() {
             <Tile
               label="Branch"
               value={current?.git_branch ?? '—'}
-              sub={
-                current?.git_dirty
-                  ? `dirty · ${num(current?.git_ahead)} ahead`
-                  : `clean · ${num(current?.git_ahead)} ahead`
-              }
+              sub={`${shortSha(current?.git_head)} · ${
+                current?.git_dirty ? 'dirty' : 'clean'
+              } · ${num(current?.git_ahead)} ahead`}
             />
           </div>
 
@@ -231,9 +253,56 @@ export default function App() {
           </div>
 
           <div className="card">
+            <h2>Work per commit</h2>
+            <p className="sub">
+              Grouped by the commit that was HEAD at capture time — the span is how long you sat on
+              it, the deltas are what you did on top of it.
+            </p>
+            <div className="scroll-x">
+              <table>
+                <thead>
+                  <tr>
+                    <th>HEAD</th>
+                    <th>Branch</th>
+                    <th>Started</th>
+                    <th>Span</th>
+                    <th>+ Lines</th>
+                    <th>− Lines</th>
+                    <th>Files touched</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {commits.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="muted">
+                        No git state in this window.
+                      </td>
+                    </tr>
+                  )}
+                  {commits.map((cm) => (
+                    <tr key={cm.git_head}>
+                      <td className="hash">
+                        {shortSha(cm.git_head)}
+                        {cm.ever_dirty ? <span className="dot" title="Tree was dirty" /> : null}
+                      </td>
+                      <td>{cm.git_branch ?? '—'}</td>
+                      <td>{clock(cm.first_seen)}</td>
+                      <td>{humanDuration(cm.seconds)}</td>
+                      <td>{num(cm.lines_added)}</td>
+                      <td>{num(cm.lines_removed)}</td>
+                      <td>{num(cm.files_touched)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="card">
             <h2>Most-revised files</h2>
             <p className="sub">
-              The agent never sends a path, so these are path hashes. Map one back locally with{' '}
+              Ranked by net lines moved across revisions, not by save count. The agent never sends a
+              path, so these are path hashes — map one back locally with{' '}
               <code>snapshot-agent once</code>.
             </p>
             <div className="scroll-x">
@@ -241,13 +310,15 @@ export default function App() {
                 <thead>
                   <tr>
                     <th>Path hash</th>
+                    <th>Lines moved</th>
                     <th>Revisions</th>
+                    <th>Lines now</th>
                   </tr>
                 </thead>
                 <tbody>
                   {hot.length === 0 && (
                     <tr>
-                      <td colSpan={2} className="muted">
+                      <td colSpan={4} className="muted">
                         Nothing changed in this window.
                       </td>
                     </tr>
@@ -255,7 +326,9 @@ export default function App() {
                   {hot.map((f) => (
                     <tr key={f.path_hash}>
                       <td className="hash">{f.path_hash.slice(0, 16)}…</td>
+                      <td>{num(f.lines_moved)}</td>
                       <td>{num(f.revisions)}</td>
+                      <td>{num(f.lines)}</td>
                     </tr>
                   ))}
                 </tbody>

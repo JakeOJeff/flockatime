@@ -1,9 +1,11 @@
 export interface ProjectRow {
   name: string;
   captured_at: number | null;
+  received_at: number | null;
   file_count: number | null;
   total_lines: number | null;
   tree_hash: string | null;
+  git_head: string | null;
   git_branch: string | null;
   git_dirty: number | null;
   git_ahead: number | null;
@@ -12,6 +14,7 @@ export interface ProjectRow {
 
 export interface SnapshotRow {
   captured_at: number;
+  received_at: number;
   file_count: number;
   total_lines: number;
   unchanged: number;
@@ -19,9 +22,32 @@ export interface SnapshotRow {
   files_removed: number | null;
   files_modified: number | null;
   lines_delta: number | null;
+  git_head: string | null;
   git_branch: string | null;
   git_dirty: number | null;
   git_ahead: number | null;
+}
+
+/** One commit's worth of work: the span during which it was HEAD. */
+export interface CommitRow {
+  git_head: string;
+  git_branch: string | null;
+  first_seen: number;
+  last_seen: number;
+  seconds: number;
+  ticks: number;
+  active_ticks: number | null;
+  lines_added: number | null;
+  lines_removed: number | null;
+  files_touched: number | null;
+  ever_dirty: number | null;
+}
+
+export interface ChurnRow {
+  path_hash: string;
+  revisions: number;
+  lines_moved: number;
+  lines: number;
 }
 
 export interface SessionRow {
@@ -48,8 +74,12 @@ export interface Summary {
     lines_added: number | null;
     lines_removed: number | null;
     files_touched: number | null;
+    /** Snapshots that arrived from the offline queue rather than live. */
+    delayed_ticks: number | null;
+    max_lag_seconds: number | null;
   } | null;
   daily: DailyRow[];
+  lag_threshold_seconds: number;
 }
 
 async function get<T>(path: string): Promise<T> {
@@ -72,9 +102,12 @@ export const getSessions = (name: string, days: number) =>
   );
 
 export const getChurn = (name: string, days: number) =>
-  get<{ files: { path_hash: string; revisions: number }[]; trees_compared: number }>(
+  get<{ files: ChurnRow[]; trees_compared: number }>(
     `/api/projects/${encodeURIComponent(name)}/churn?days=${days}`,
   );
+
+export const getCommits = (name: string, days: number) =>
+  get<{ commits: CommitRow[] }>(`/api/projects/${encodeURIComponent(name)}/commits?days=${days}`);
 
 /* ---------- formatting ---------- */
 
@@ -86,6 +119,9 @@ export function humanDuration(seconds: number): string {
 }
 
 export const num = (v: number | null | undefined) => (v ?? 0).toLocaleString();
+
+/** Short commit sha, the length git itself abbreviates to. */
+export const shortSha = (sha: string | null | undefined) => (sha ? sha.slice(0, 7) : '—');
 
 export const clock = (unix: number) =>
   new Date(unix * 1000).toLocaleString(undefined, {

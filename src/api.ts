@@ -50,7 +50,7 @@ api.get('/api/projects', async (c) => {
   return c.json({ projects: results });
 });
 
-/** Raw snapshot rows for charting. One row per tick; no R2 reads. */
+/** Raw snapshot rows for charting. One row per tick; summary columns only. */
 api.get('/api/projects/:name/timeline', async (c) => {
   const id = await projectId(c.env, c.req.param('name'));
   if (id === null) return c.json({ error: 'unknown project' }, 404);
@@ -228,8 +228,9 @@ api.get('/api/projects/:name/commits', async (c) => {
  * would need line-level hashes the agent does not send; this is the weaker
  * number that the wire format actually supports.
  *
- * This is the one endpoint that reads R2, so it is deliberately narrow: it
- * walks distinct trees in the window rather than every tick.
+ * This is the one endpoint that reads stored file lists back, so it is
+ * deliberately narrow: it walks distinct trees in the window rather than every
+ * tick, capped at 200.
  */
 api.get('/api/projects/:name/churn', async (c) => {
   const id = await projectId(c.env, c.req.param('name'));
@@ -238,7 +239,7 @@ api.get('/api/projects/:name/churn', async (c) => {
   const { results } = await c.env.DB.prepare(
     `SELECT DISTINCT s.tree_hash
        FROM snapshots s JOIN trees t ON t.tree_hash = s.tree_hash
-      WHERE s.project_id = ?1 AND s.captured_at >= ?2 AND t.files_key IS NOT NULL
+      WHERE s.project_id = ?1 AND s.captured_at >= ?2 AND t.files_blob IS NOT NULL
       ORDER BY s.captured_at ASC LIMIT 200`,
   )
     .bind(id, windowStart(c))

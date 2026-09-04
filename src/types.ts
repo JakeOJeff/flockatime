@@ -1,7 +1,6 @@
 /** Bindings declared in wrangler.jsonc. */
 export interface Env {
   DB: D1Database;
-  TREES: R2Bucket;
   ASSETS: Fetcher;
   SESSION_GAP_SECONDS: string;
   REQUIRE_ACCESS: string;

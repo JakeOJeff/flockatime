@@ -19,15 +19,13 @@
     {
       "binding": "DB",
       "database_name": "flockatime",
-      // Fill in from `wrangler d1 create flockatime`.
+      // Fill in from `wrangler d1 create flockatime`. D1 is the only
+      // storage binding: file lists live in the trees table, not R2.
       "database_id": "00000000-0000-0000-0000-000000000000",
       "migrations_dir": "migrations"
     }
   ],
 
-  "r2_buckets": [
-    { "binding": "TREES", "bucket_name": "flockatime-trees" }
-  ],
 
   "vars": {
     // Session clustering: gap in seconds that ends a coding session.

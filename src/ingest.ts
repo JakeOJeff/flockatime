@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import type { Env, WireFile, WireSnapshot } from './types';
 import { requireAgentKey } from './auth';
-import { diffTrees, getTree, putTree } from './trees';
+import { diffTrees, getTree, packTree } from './trees';
 
 type Ctx = { Bindings: Env; Variables: { accountId: string } };
 
@@ -107,17 +107,18 @@ ingest.post('/v1/snapshots', requireAgentKey, async (c) => {
   const newTrees = [...withFiles.values()].filter((s) => !known.has(s.tree_hash));
   const treeStmts: D1PreparedStatement[] = [];
   for (const group of chunks(newTrees, 8)) {
-    // Bounded concurrency: a 5000-snapshot flush should not open 5000 R2 puts.
+    // Bounded concurrency: a 5000-snapshot flush should not open 5000 gzip
+    // streams at once.
     await Promise.all(
       group.map(async (s) => {
-        const key = await putTree(c.env, s.tree_hash, s.files as WireFile[]);
+        const blob = await packTree(s.files as WireFile[]);
         treeStmts.push(
           db
             .prepare(
-              `INSERT OR IGNORE INTO trees (tree_hash, files_key, file_count, total_lines, first_seen)
+              `INSERT OR IGNORE INTO trees (tree_hash, files_blob, file_count, total_lines, first_seen)
                VALUES (?1, ?2, ?3, ?4, ?5)`,
             )
-            .bind(s.tree_hash, key, s.file_count, s.total_lines, now),
+            .bind(s.tree_hash, blob, s.file_count, s.total_lines, now),
         );
       }),
     );

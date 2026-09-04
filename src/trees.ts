@@ -1,35 +1,43 @@
 import type { Env, TreeDiff, WireFile } from './types';
 
-export const treeKey = (hash: string) => `trees/${hash}.json.gz`;
-
 /**
- * Store a file list under its tree hash, gzipped. Called only when the hash is
- * new: the hash is derived from the list, so an existing key already holds
- * byte-identical content and rewriting it would be pure waste.
+ * Gzip a file list for storage in the trees row.
+ *
+ * Called only for a hash we have not stored: the hash is derived from the list,
+ * so an existing row already holds byte-identical content and rewriting it
+ * would be pure waste.
+ *
+ * Returns the bytes rather than writing them, so the caller can bind them into
+ * the same INSERT that creates the tree row -- one D1 write instead of two.
  */
-export async function putTree(env: Env, hash: string, files: WireFile[]): Promise<string> {
-  const key = treeKey(hash);
+export async function packTree(files: WireFile[]): Promise<ArrayBuffer> {
   const gzip = new Response(JSON.stringify(files)).body!.pipeThrough(new CompressionStream('gzip'));
-  // R2 refuses a stream of unknown length, and a compression stream has none,
-  // so buffer it. File lists are hundreds of KB at worst.
-  const bytes = await new Response(gzip).arrayBuffer();
-  await env.TREES.put(key, bytes, {
-    httpMetadata: { contentType: 'application/json', contentEncoding: 'gzip' },
-  });
-  return key;
+  // A compression stream has no known length, and D1 needs a sized value to
+  // bind, so buffer it. File lists are hundreds of KB at worst.
+  return new Response(gzip).arrayBuffer();
 }
 
 /** Read a file list back. Returns null when the tree was never stored with files. */
 export async function getTree(env: Env, hash: string): Promise<WireFile[] | null> {
-  const obj = await env.TREES.get(treeKey(hash));
-  if (!obj) return null;
-  const text = await new Response(obj.body!.pipeThrough(new DecompressionStream('gzip'))).text();
+  const row = await env.DB.prepare(`SELECT files_blob FROM trees WHERE tree_hash = ?1`)
+    .bind(hash)
+    .first<{ files_blob: ArrayBuffer | number[] | null }>();
+  if (!row?.files_blob) return null;
+
+  // D1 hands a BLOB back as ArrayBuffer on current versions and as a byte array
+  // on older ones. Normalise before decompressing.
+  const bytes =
+    row.files_blob instanceof ArrayBuffer ? row.files_blob : new Uint8Array(row.files_blob).buffer;
+
+  const text = await new Response(
+    new Response(bytes).body!.pipeThrough(new DecompressionStream('gzip')),
+  ).text();
   return JSON.parse(text) as WireFile[];
 }
 
 /**
  * Compare two file lists by path_hash. Runs once at ingest while both lists are
- * already in memory, so the dashboard reads nothing but D1.
+ * already in memory, so the dashboard reads a summary rather than recomputing.
  */
 export function diffTrees(prev: WireFile[], next: WireFile[]): Omit<TreeDiff, 'lines_delta'> {
   const before = new Map(prev.map((f) => [f.path_hash, f.content_hash]));

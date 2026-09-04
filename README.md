@@ -6,12 +6,14 @@ counts) and never its contents.
 
 Single Cloudflare Worker: it serves the ingest API, the dashboard API, and the
 built frontend from one origin, so there is no CORS layer and one `deploy`.
+D1 is the only storage binding — there is no R2 bucket to create and no payment
+method to add.
 
 ```
 src/          Worker — Hono routes
   ingest.ts     POST /v1/snapshots   (the agent writes here)
   api.ts        GET  /api/*          (the dashboard reads here)
-  trees.ts      R2 file-list storage + diffing
+  trees.ts      file-list packing + diffing
   auth.ts       bearer keys, Access gate
 migrations/   D1 schema
 web/          Vite + React dashboard, built to web/dist
@@ -25,13 +27,13 @@ not diff. Storing a row per file per tick would reach millions of rows in a week
 for data nobody queries per-file, so:
 
 - **File lists are deduped by `tree_hash`.** The hash is derived from the list, so
-  an identical hash is an identical list: it goes to R2 once, as
-  `trees/{hash}.json.gz`, and every later snapshot points at it.
+  an identical hash is an identical list: it is gzipped into that tree's row
+  once, and every later snapshot points at it.
 - **The diff runs at ingest,** while both lists are already in memory. The
   added / removed / modified / lines-delta summary is written onto the snapshot
-  row, so **every dashboard query is pure D1** — no R2 read on any page load.
-- The one exception is `/api/projects/:name/churn`, which walks distinct trees to
-  rank per-file volatility. It is capped at 200 trees per request.
+  row, so **no dashboard query unpacks a file list** on a normal page load.
+- The one exception is `/api/projects/:name/churn`, which reads stored lists back
+  to rank per-file volatility. It is capped at 200 trees per request.
 
 Two consequences of the agent's design are handled explicitly:
 
@@ -73,7 +75,6 @@ side; Vite proxies `/api` and `/v1` to the Worker.
 
 ```bash
 npx wrangler d1 create flockatime          # put the id in wrangler.jsonc
-npx wrangler r2 bucket create flockatime-trees
 npx wrangler d1 migrations apply flockatime --remote
 node scripts/new-key.mjs "laptop" > key.sql
 npx wrangler d1 execute flockatime --remote --file=./key.sql && rm key.sql
@@ -102,5 +103,11 @@ deploy to a public hostname while it is `"false"`.**
   needs the viewer's timezone.
 - Single-user: every row uses `account_id = 'local'`. The column is carried
   everywhere so multi-tenant needs no migration.
+- Storing the file lists in D1 rather than R2 buys a free deployment and costs a
+  ceiling: a D1 database caps at **500 MB** on the free plan and 10 GB paid,
+  where R2 gives 10 GB free. A list costs roughly 100 bytes per file per distinct
+  tree, so a 1,000-file project is ~100 KB per tree hash — fine for a demo or a
+  single developer, and the point at which to move the blobs back out to R2 (or
+  prune old trees) if this ever grows past one person.
 
 <!-- repro touch -->

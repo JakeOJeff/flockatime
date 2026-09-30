@@ -47,7 +47,10 @@ const NAV = [
 
 export type Page = (typeof NAV)[number]['page'];
 
-/** `#/projects/<name>` → { page: 'projects', project: name }. Unknown pages land on home. */
+/**
+ * `#/projects/<name>` → { page: 'projects', project: name }. Unknown pages land on home.
+ * Docs reuse the second segment for `<slug>#<anchor>`.
+ */
 function parseHash(hash: string): { page: Page; project: string | null } {
   const [page, project] = hash.replace(/^#\/?/, '').split('/');
   const known = NAV.some((n) => n.page === page) ? (page as Page) : 'home';
@@ -141,7 +144,7 @@ function Shell({ user }: { user: User | null }) {
         <div className="brand">flockatime</div>
       </aside>
 
-      <main className="main">
+      <main className={route.page === 'docs' ? 'main wide' : 'main'}>
         {route.page === 'home' && <Home user={user} days={days} setDays={setDays} ht={ht} source={source} setSource={setSource} />}
         {route.page === 'projects' && (
           <Projects
@@ -153,7 +156,7 @@ function Shell({ user }: { user: User | null }) {
             setSource={setSource}
           />
         )}
-        {route.page === 'docs' && <Docs />}
+        {route.page === 'docs' && <Docs route={route.project} />}
         {route.page === 'extensions' && <Extensions />}
         {route.page === 'settings' && <Settings user={user} ht={ht} />}
       </main>

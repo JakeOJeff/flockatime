@@ -21,6 +21,8 @@ src/          Worker — Hono routes
   install.ts    GET  /install.ps1, /install.sh  (one-line CLI installers)
 migrations/   D1 schema
 web/          Vite + React dashboard, built to web/dist
+  src/docs/     the Docs page: one Markdown file per page in pages/,
+                sidebar order in content.ts
 scripts/      key minting
 ```
 

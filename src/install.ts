@@ -84,7 +84,9 @@ const PS1 = String.raw`# flockatime CLI installer for Windows. Copy the full com
       $env:Path += ";$dir"
     }
 
-    & "$dir\snapshot-agent.exe" setup --endpoint $endpoint --key $key
+    # The key reaches setup through FLOCKATIME_KEY, never the command line,
+    # where any process on the machine could read it.
+    & "$dir\snapshot-agent.exe" setup --endpoint $endpoint
     if ($LASTEXITCODE -ne 0) { throw 'setup did not finish --- see the message above' }
   }
   finally {
@@ -147,7 +149,10 @@ cp "$tmp/snapshot-agent_${'$'}{os}_${'$'}{arch}/snapshot-agent" "$dir/snapshot-a
 chmod 755 "$dir/snapshot-agent.new"
 mv -f "$dir/snapshot-agent.new" "$dir/snapshot-agent"
 
-"$dir/snapshot-agent" setup --endpoint "$ENDPOINT" --key "$KEY"
+# The key reaches setup through FLOCKATIME_KEY, never the command line, where
+# any user on the machine could read it from ps.
+export FLOCKATIME_KEY="$KEY"
+"$dir/snapshot-agent" setup --endpoint "$ENDPOINT"
 
 case ":$PATH:" in
   *":$dir:"*) ;;

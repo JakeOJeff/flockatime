@@ -34,9 +34,9 @@
     "REQUIRE_AUTH": "true",
     // Comma-separated emails allowed to sign in to the dashboard. Empty lets
     // nobody in.
-    "ALLOWED_EMAILS": "",
+    "ALLOWED_EMAILS": "realjakeojeff@gmail.com",
     // From auth.hackclub.com/developer/apps. Not secret: the client secret and
     // SESSION_SECRET are set with `wrangler secret put`.
-    "HACKCLUB_CLIENT_ID": ""
+    "HACKCLUB_CLIENT_ID": "4754299317c020e13a6507782c25d43a"
   }
 }

@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import type { Env } from './types';
+import type { AppEnv } from './types';
 import { ingest } from './ingest';
 import { api } from './api';
 import { oauth } from './oauth';
@@ -7,7 +7,7 @@ import { hackatime } from './hackatime';
 import { keys } from './keys';
 import { install } from './install';
 
-const app = new Hono<{ Bindings: Env }>();
+const app = new Hono<AppEnv>();
 
 app.get('/healthz', (c) => c.json({ ok: true }));
 

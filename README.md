@@ -95,13 +95,27 @@ flow, reads the email from `/oauth/userinfo`, and sets an HMAC-signed session
 cookie for seven days. Only emails in `ALLOWED_EMAILS` get in — full addresses, or
 `@domain` entries such as `@hackclub.com` that admit exactly that domain (not its
 subdomains). An empty list lets nobody in, and removing an entry locks it out on
-its next request. Everyone admitted sees the same data and can mint or revoke
-agent keys.
+its next request — dashboard and agents alike.
+
+#### Accounts
+
+Every signed-in user has their own account, keyed by their Hack Club Auth id:
+their own agent keys (devices), projects, snapshots and file lists. Nothing is
+shared. A user sees and revokes only the keys they minted, and a key writes only
+into the account that minted it; a project name or tree hash that matches
+someone else's stays separate. Ingest checks the key's account against
+`ALLOWED_EMAILS` on every request, so a removed user's agents stop too.
+
+`OWNER_EMAIL` is the deployment owner. Data recorded before accounts existed sits
+under `account_id = 'local'`, and the owner's first sign-in moves it — keys
+included, so their running agents keep working — into their account. Until
+then those agents get a 401 and queue their snapshots, and they flush once the
+owner has signed in.
 
 1. Create an app at <https://auth.hackclub.com/developer/apps> with the redirect
    URI `https://<your-worker>/auth/callback` and scopes `openid email name`.
 2. Put the client ID and your email in `wrangler.jsonc` (`HACKCLUB_CLIENT_ID`,
-   `ALLOWED_EMAILS`).
+   `ALLOWED_EMAILS`, `OWNER_EMAIL`).
 3. Set the two secrets:
    ```bash
    npx wrangler secret put HACKCLUB_CLIENT_SECRET
@@ -117,8 +131,8 @@ the three settings above in `.dev.vars`.
 ### Hackatime
 
 The dashboard shows editor time from [Hackatime](https://hackatime.hackclub.com)
-beside tree activity. The Worker proxies it, so no key reaches the browser. It
-picks who to ask for in this order:
+beside tree activity. The Worker proxies it, so no key reaches the browser. For
+the owner (`OWNER_EMAIL`) it picks who to ask for in this order:
 
 1. `HACKATIME_API_KEY` secret — your own key (Hackatime → Settings), reads your
    stats even when they are private:
@@ -128,6 +142,9 @@ picks who to ask for in this order:
 2. `HACKATIME_USER` in `wrangler.jsonc` — a username or Slack ID; public stats only.
 3. The signed-in Hack Club Auth id — Hackatime can look users up by it; public
    stats only.
+
+Every other user always gets 3, their own public stats: the first two describe
+the owner and are never used for anyone else.
 
 Hackatime time is account-wide (every project), and the panel matches a
 Hackatime project to the open flockatime project by name.
@@ -158,8 +175,8 @@ minting one from the terminal.
   not recomputed.
 - Daily roll-ups and the weekly heatmap are cut in the viewer's current UTC offset,
   so days that crossed a DST change can be off by an hour at the edges.
-- Single-user: every row uses `account_id = 'local'`. The column is carried
-  everywhere so multi-tenant needs no migration.
+- With `REQUIRE_AUTH` off (local dev) there are no accounts: everything is filed
+  under `account_id = 'local'`.
 - Storing the file lists in D1 rather than R2 buys a free deployment and costs a
   ceiling: a D1 database caps at **500 MB** on the free plan and 10 GB paid,
   where R2 gives 10 GB free. A list costs roughly 100 bytes per file per distinct

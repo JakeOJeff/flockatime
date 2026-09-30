@@ -1,11 +1,7 @@
 import { Hono } from 'hono';
-import type { Env, WireFile } from './types';
+import type { AppEnv, Env, WireFile } from './types';
 import { requireDashboard } from './auth';
 import { getTree } from './trees';
-
-type Ctx = { Bindings: Env };
-
-const ACCOUNT = 'local'; // single-user build
 
 /**
  * A snapshot that reached the server this long after it was captured did not
@@ -14,7 +10,7 @@ const ACCOUNT = 'local'; // single-user build
  */
 const LAG_THRESHOLD_SECONDS = 120;
 
-export const api = new Hono<Ctx>();
+export const api = new Hono<AppEnv>();
 
 api.use('/api/*', requireDashboard);
 
@@ -24,9 +20,10 @@ function windowStart(c: { req: { query: (k: string) => string | undefined } }, f
   return Math.floor(Date.now() / 1000) - days * 86400;
 }
 
-async function projectId(env: Env, name: string): Promise<number | null> {
+/** The signed-in account's project by name; another account's is not found. */
+async function projectId(env: Env, account: string, name: string): Promise<number | null> {
   const row = await env.DB.prepare(`SELECT id FROM projects WHERE account_id = ?1 AND name = ?2`)
-    .bind(ACCOUNT, name)
+    .bind(account, name)
     .first<{ id: number }>();
   return row?.id ?? null;
 }
@@ -44,7 +41,7 @@ api.get('/api/projects', async (c) => {
       WHERE p.account_id = ?1
       ORDER BY s.captured_at DESC NULLS LAST`,
   )
-    .bind(ACCOUNT)
+    .bind(c.get('accountId'))
     .all();
 
   return c.json({ projects: results });
@@ -52,7 +49,7 @@ api.get('/api/projects', async (c) => {
 
 /** Raw snapshot rows for charting. One row per tick; summary columns only. */
 api.get('/api/projects/:name/timeline', async (c) => {
-  const id = await projectId(c.env, c.req.param('name'));
+  const id = await projectId(c.env, c.get('accountId'), c.req.param('name'));
   if (id === null) return c.json({ error: 'unknown project' }, 404);
 
   const { results } = await c.env.DB.prepare(
@@ -76,7 +73,7 @@ api.get('/api/projects/:name/timeline', async (c) => {
  * an editor plugin.
  */
 api.get('/api/projects/:name/sessions', async (c) => {
-  const id = await projectId(c.env, c.req.param('name'));
+  const id = await projectId(c.env, c.get('accountId'), c.req.param('name'));
   if (id === null) return c.json({ error: 'unknown project' }, 404);
 
   const gap = Number(c.env.SESSION_GAP_SECONDS) || 900;
@@ -137,7 +134,7 @@ api.get('/api/projects/:name/sessions', async (c) => {
 
 /** Headline counters for the window, plus a per-day activity roll-up. */
 api.get('/api/projects/:name/summary', async (c) => {
-  const id = await projectId(c.env, c.req.param('name'));
+  const id = await projectId(c.env, c.get('accountId'), c.req.param('name'));
   if (id === null) return c.json({ error: 'unknown project' }, 404);
   const from = windowStart(c);
 
@@ -198,7 +195,7 @@ export function tzOffsetMinutes(c: { req: { query: (k: string) => string | undef
  * hour, in the viewer's timezone so "9pm" means their 9pm.
  */
 api.get('/api/projects/:name/rhythm', async (c) => {
-  const id = await projectId(c.env, c.req.param('name'));
+  const id = await projectId(c.env, c.get('accountId'), c.req.param('name'));
   if (id === null) return c.json({ error: 'unknown project' }, 404);
   const shift = `${tzOffsetMinutes(c)} minutes`;
 
@@ -226,7 +223,7 @@ api.get('/api/projects/:name/rhythm', async (c) => {
  * long that commit stayed HEAD, the deltas are the work done during it.
  */
 api.get('/api/projects/:name/commits', async (c) => {
-  const id = await projectId(c.env, c.req.param('name'));
+  const id = await projectId(c.env, c.get('accountId'), c.req.param('name'));
   if (id === null) return c.json({ error: 'unknown project' }, 404);
 
   const { results } = await c.env.DB.prepare(
@@ -273,16 +270,16 @@ api.get('/api/projects/:name/commits', async (c) => {
  * tick, capped at 200.
  */
 api.get('/api/projects/:name/churn', async (c) => {
-  const id = await projectId(c.env, c.req.param('name'));
+  const id = await projectId(c.env, c.get('accountId'), c.req.param('name'));
   if (id === null) return c.json({ error: 'unknown project' }, 404);
 
   const { results } = await c.env.DB.prepare(
     `SELECT DISTINCT s.tree_hash
-       FROM snapshots s JOIN trees t ON t.tree_hash = s.tree_hash
+       FROM snapshots s JOIN trees t ON t.account_id = ?3 AND t.tree_hash = s.tree_hash
       WHERE s.project_id = ?1 AND s.captured_at >= ?2 AND t.files_blob IS NOT NULL
       ORDER BY s.captured_at ASC LIMIT 200`,
   )
-    .bind(id, windowStart(c))
+    .bind(id, windowStart(c), c.get('accountId'))
     .all<{ tree_hash: string }>();
 
   interface Churn {
@@ -297,7 +294,7 @@ api.get('/api/projects/:name/churn', async (c) => {
   let previous: Map<string, ReturnType<typeof state>> | null = null;
 
   for (const { tree_hash } of results) {
-    const files = await getTree(c.env, tree_hash);
+    const files = await getTree(c.env, c.get('accountId'), tree_hash);
     if (!files) continue;
     const current = new Map(files.map((f) => [f.path_hash, state(f)]));
     if (previous) {

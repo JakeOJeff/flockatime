@@ -7,6 +7,11 @@ export interface Env {
   REQUIRE_AUTH: string;
   /** Comma-separated emails allowed into the dashboard. Empty = nobody. */
   ALLOWED_EMAILS: string;
+  /**
+   * The deployment owner. Their first sign-in claims the data recorded before
+   * accounts existed, and only they get the HACKATIME_* settings below.
+   */
+  OWNER_EMAIL?: string;
   HACKCLUB_CLIENT_ID: string;
   /** Secret (`wrangler secret put`). */
   HACKCLUB_CLIENT_SECRET: string;
@@ -19,6 +24,13 @@ export interface Env {
   /** GitHub owner/repo the install scripts download snapshot-agent from. */
   CLI_REPO?: string;
 }
+
+/**
+ * Hono environment for every route that acts for an account. `accountId` is
+ * set by requireDashboard (from the session) or requireAgentKey (from the key),
+ * and every query that touches user data is scoped by it.
+ */
+export type AppEnv = { Bindings: Env; Variables: { accountId: string } };
 
 /** One file record as the agent sends it. Path is a hash, never the path. */
 export interface WireFile {

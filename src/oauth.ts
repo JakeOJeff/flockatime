@@ -1,7 +1,15 @@
 import { Hono, type Context } from 'hono';
 import { deleteCookie, getSignedCookie, setSignedCookie } from 'hono/cookie';
-import type { Env } from './types';
-import { SESSION_COOKIE, SESSION_TTL_SECONDS, isAllowed, sessionUser, type SessionUser } from './auth';
+import type { AppEnv, Env } from './types';
+import {
+  DEV_ACCOUNT,
+  SESSION_COOKIE,
+  SESSION_TTL_SECONDS,
+  isAllowed,
+  isOwner,
+  sessionUser,
+  type SessionUser,
+} from './auth';
 
 /**
  * Dashboard login via Hack Club Auth (OAuth 2.0 authorization code flow).
@@ -12,9 +20,7 @@ const HCA = 'https://auth.hackclub.com';
 const SCOPES = 'openid email name';
 const STATE_COOKIE = 'fk_oauth_state';
 
-type Ctx = { Bindings: Env };
-
-export const oauth = new Hono<Ctx>();
+export const oauth = new Hono<AppEnv>();
 
 const redirectUri = (url: string) => new URL('/auth/callback', url).toString();
 const secure = (url: string) => new URL(url).protocol === 'https:';
@@ -24,7 +30,7 @@ const secure = (url: string) => new URL(url).protocol === 'https:';
  * turns into a message. Only fixed codes go in the URL, never provider text.
  */
 type FailReason = 'not_configured' | 'cancelled' | 'expired' | 'failed' | 'no_email' | 'not_allowed';
-const failed = (c: Context<Ctx>, reason: FailReason) => c.redirect(`/?auth_error=${reason}`);
+const failed = (c: Context<AppEnv>, reason: FailReason) => c.redirect(`/?auth_error=${reason}`);
 
 function randomToken(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
@@ -106,9 +112,14 @@ oauth.get('/auth/callback', async (c) => {
   if (!info.email || info.email_verified === false) {
     return failed(c, 'no_email');
   }
+  // sub is the account id every row is filed under; without it there is no
+  // account to open.
+  if (!info.sub) return failed(c, 'failed');
   if (!isAllowed(c.env, info.email)) {
     return failed(c, 'not_allowed');
   }
+
+  await recordAccount(c.env, info.sub, info.email, info.name ?? null);
 
   const user: SessionUser = {
     email: info.email,
@@ -125,6 +136,36 @@ oauth.get('/auth/callback', async (c) => {
   });
   return c.redirect('/');
 });
+
+/**
+ * Upserts the account row, which is what lets an agent key keep working: ingest
+ * checks the key's account email against the allowlist.
+ *
+ * The owner's sign-in also claims everything recorded before accounts existed,
+ * which sits under DEV_ACCOUNT. Every later sign-in finds nothing left to move.
+ * OR IGNORE, so a name clash can never block a login; the clashing row is
+ * simply left where it was.
+ */
+async function recordAccount(env: Env, sub: string, email: string, name: string | null) {
+  const now = Math.floor(Date.now() / 1000);
+  const stmts = [
+    env.DB.prepare(
+      `INSERT INTO accounts (id, email, name, created_at, last_login) VALUES (?1, ?2, ?3, ?4, ?4)
+       ON CONFLICT (id) DO UPDATE SET email = ?2, name = ?3, last_login = ?4`,
+    ).bind(sub, email, name, now),
+  ];
+  if (isOwner(env, email)) {
+    for (const table of ['api_keys', 'projects', 'trees']) {
+      stmts.push(
+        env.DB.prepare(`UPDATE OR IGNORE ${table} SET account_id = ?1 WHERE account_id = ?2`).bind(
+          sub,
+          DEV_ACCOUNT,
+        ),
+      );
+    }
+  }
+  await env.DB.batch(stmts);
+}
 
 oauth.get('/auth/logout', (c) => {
   deleteCookie(c, SESSION_COOKIE, { path: '/', secure: secure(c.req.url) });

@@ -1,9 +1,7 @@
 import { Hono } from 'hono';
-import type { Env, WireFile, WireSnapshot } from './types';
+import type { AppEnv, WireFile, WireSnapshot } from './types';
 import { requireAgentKey } from './auth';
 import { diffTrees, getTree, packTree } from './trees';
-
-type Ctx = { Bindings: Env; Variables: { accountId: string } };
 
 const MAX_BATCH = 5000; // the agent caps its own queue here
 const PARAM_CHUNK = 40; // keep bound-parameter counts per statement small
@@ -37,7 +35,7 @@ interface Prev {
   files: WireFile[] | null | undefined; // undefined = not loaded yet
 }
 
-export const ingest = new Hono<Ctx>();
+export const ingest = new Hono<AppEnv>();
 
 // `doctor` probes with GET and only needs an HTTP answer.
 ingest.get('/v1/snapshots', (c) => c.json({ ok: true, service: 'flockatime' }));
@@ -86,8 +84,9 @@ ingest.post('/v1/snapshots', requireAgentKey, async (c) => {
   }
 
   // --- store new trees ----------------------------------------------------
-  // Deduped by hash: the hash is derived from the list, so a hash we have
-  // already seen is a list we have already written.
+  // Deduped by hash within the account: the hash is derived from the list, so
+  // a hash this account already stored is a list it already wrote. Never
+  // across accounts, or one account's upload would answer for another's.
   const withFiles = new Map<string, WireSnapshot>();
   for (const s of batch) {
     if (s.files && s.files.length > 0 && !withFiles.has(s.tree_hash)) {
@@ -98,8 +97,11 @@ ingest.post('/v1/snapshots', requireAgentKey, async (c) => {
   const known = new Set<string>();
   for (const chunk of chunks([...withFiles.keys()], PARAM_CHUNK)) {
     const rows = await db
-      .prepare(`SELECT tree_hash FROM trees WHERE tree_hash IN (${placeholders(chunk.length, 1)})`)
-      .bind(...chunk)
+      .prepare(
+        `SELECT tree_hash FROM trees
+         WHERE account_id = ?1 AND tree_hash IN (${placeholders(chunk.length, 2)})`,
+      )
+      .bind(accountId, ...chunk)
       .all<{ tree_hash: string }>();
     for (const r of rows.results) known.add(r.tree_hash);
   }
@@ -115,10 +117,10 @@ ingest.post('/v1/snapshots', requireAgentKey, async (c) => {
         treeStmts.push(
           db
             .prepare(
-              `INSERT OR IGNORE INTO trees (tree_hash, files_blob, file_count, total_lines, first_seen)
-               VALUES (?1, ?2, ?3, ?4, ?5)`,
+              `INSERT OR IGNORE INTO trees (account_id, tree_hash, files_blob, file_count, total_lines, first_seen)
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6)`,
             )
-            .bind(s.tree_hash, blob, s.file_count, s.total_lines, now),
+            .bind(accountId, s.tree_hash, blob, s.file_count, s.total_lines, now),
         );
       }),
     );
@@ -167,7 +169,7 @@ ingest.post('/v1/snapshots', requireAgentKey, async (c) => {
       added = removed = modified = 0;
     } else if (p && files) {
       if (p.files === undefined) {
-        p.files = inMemoryTrees.get(p.tree_hash) ?? (await getTree(c.env, p.tree_hash));
+        p.files = inMemoryTrees.get(p.tree_hash) ?? (await getTree(c.env, accountId, p.tree_hash));
       }
       if (p.files) {
         const d = diffTrees(p.files, files);

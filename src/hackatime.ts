@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
-import type { Env } from './types';
-import { requireDashboard, sessionUser } from './auth';
+import type { AppEnv } from './types';
+import { isOwner, requireDashboard, sessionUser } from './auth';
 import { tzOffsetMinutes } from './api';
 
 /**
@@ -8,17 +8,19 @@ import { tzOffsetMinutes } from './api';
  * never holds the API key and the dashboard can lay them beside tree activity.
  *
  * Who to ask for, in order:
- *   1. HACKATIME_API_KEY (secret) — the user's own key, reads `users/my`, works
- *      even when their stats are private.
- *   2. HACKATIME_USER — a username or Slack ID; needs public stats.
+ *   1. HACKATIME_API_KEY (secret) — the owner's own key, reads `users/my`,
+ *      works even when their stats are private.
+ *   2. HACKATIME_USER — the owner's username or Slack ID; needs public stats.
  *   3. The signed-in Hack Club Auth id — Hackatime looks users up by it too;
  *      needs public stats.
+ *
+ * 1 and 2 describe one person, so they apply only to OWNER_EMAIL (or to
+ * everyone while auth is off in local dev). Every other user gets 3: their
+ * own public stats, never the owner's.
  */
 const HT = 'https://hackatime.hackclub.com/api/v1';
 
-type Ctx = { Bindings: Env };
-
-export const hackatime = new Hono<Ctx>();
+export const hackatime = new Hono<AppEnv>();
 
 hackatime.use('/api/hackatime', requireDashboard);
 
@@ -54,11 +56,13 @@ const slim = (rows: Slice[] | undefined) =>
     .map(({ name, total_seconds, percent }) => ({ name, total_seconds, percent }));
 
 hackatime.get('/api/hackatime', async (c) => {
-  const key = c.env.HACKATIME_API_KEY;
-  const session = key || c.env.HACKATIME_USER ? null : await sessionUser(c);
-  const who = key ? 'my' : c.env.HACKATIME_USER || session?.sub;
+  const session = c.env.REQUIRE_AUTH === 'true' ? await sessionUser(c) : null;
+  const owner = c.env.REQUIRE_AUTH !== 'true' || isOwner(c.env, session?.email);
+  const key = owner ? c.env.HACKATIME_API_KEY : undefined;
+  const user = owner ? c.env.HACKATIME_USER : undefined;
+  const who = key ? 'my' : user || session?.sub;
   if (!who) return c.json({ configured: false });
-  const source = key ? 'api_key' : c.env.HACKATIME_USER ? 'username' : 'hack_club';
+  const source = key ? 'api_key' : user ? 'username' : 'hack_club';
 
   const days = Math.min(Math.max(Number(c.req.query('days') ?? 7) || 7, 1), 365);
   const tz = tzOffsetMinutes(c);

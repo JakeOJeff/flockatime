@@ -17,10 +17,13 @@ export async function packTree(files: WireFile[]): Promise<ArrayBuffer> {
   return new Response(gzip).arrayBuffer();
 }
 
-/** Read a file list back. Returns null when the tree was never stored with files. */
-export async function getTree(env: Env, hash: string): Promise<WireFile[] | null> {
-  const row = await env.DB.prepare(`SELECT files_blob FROM trees WHERE tree_hash = ?1`)
-    .bind(hash)
+/**
+ * Read one account's file list back. Returns null when that account never
+ * stored the tree with files.
+ */
+export async function getTree(env: Env, account: string, hash: string): Promise<WireFile[] | null> {
+  const row = await env.DB.prepare(`SELECT files_blob FROM trees WHERE account_id = ?1 AND tree_hash = ?2`)
+    .bind(account, hash)
     .first<{ files_blob: ArrayBuffer | number[] | null }>();
   if (!row?.files_blob) return null;
 

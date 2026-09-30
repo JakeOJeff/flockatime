@@ -39,11 +39,15 @@
     // Comma-separated emails allowed to sign in to the dashboard; an entry
     // starting with "@" admits that whole domain. Empty lets nobody in.
     "ALLOWED_EMAILS": "realjakeojeff@gmail.com,@hackclub.com",
+    // The deployment owner. Their first sign-in claims the data recorded before
+    // accounts existed, and only they get HACKATIME_API_KEY / HACKATIME_USER.
+    // Everyone else signed in sees only their own keys, devices and projects.
+    "OWNER_EMAIL": "realjakeojeff@gmail.com",
     // From auth.hackclub.com/developer/apps. Not secret: the client secret and
     // SESSION_SECRET are set with `wrangler secret put`.
     "HACKCLUB_CLIENT_ID": "4754299317c020e13a6507782c25d43a",
-    // Hackatime username or Slack ID for the Hackatime panel (public stats
-    // only). Leave empty to use your Hack Club sign-in, or set the
+    // The owner's Hackatime username or Slack ID for the Hackatime panel
+    // (public stats only). Leave empty to use your Hack Club sign-in, or set the
     // HACKATIME_API_KEY secret instead to read private stats.
     "HACKATIME_USER": "",
     // Where the one-line installers download snapshot-agent releases from.

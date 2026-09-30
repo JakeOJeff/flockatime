@@ -4,6 +4,8 @@ import { ingest } from './ingest';
 import { api } from './api';
 import { oauth } from './oauth';
 import { hackatime } from './hackatime';
+import { keys } from './keys';
+import { install } from './install';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -13,8 +15,10 @@ app.route('/', ingest);
 app.route('/', api);
 app.route('/', oauth);
 app.route('/', hackatime);
+app.route('/', keys);
+app.route('/', install);
 
-// wrangler.jsonc routes only /v1/*, /api/* and /auth/* through the Worker, so this is a
+// wrangler.jsonc runs the Worker first only for its own routes (run_worker_first), so this is a
 // safety net: anything else that still lands here is a static asset request.
 app.all('*', (c) => c.env.ASSETS.fetch(c.req.raw));
 

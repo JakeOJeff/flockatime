@@ -16,6 +16,8 @@ export interface Env {
   HACKATIME_API_KEY?: string;
   /** Optional Hackatime username or Slack ID (public stats only). */
   HACKATIME_USER?: string;
+  /** GitHub owner/repo the install scripts download snapshot-agent from. */
+  CLI_REPO?: string;
 }
 
 /** One file record as the agent sends it. Path is a hash, never the path. */

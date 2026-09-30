@@ -12,7 +12,7 @@
     "directory": "./web/dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/v1/*", "/api/*", "/auth/*", "/healthz"]
+    "run_worker_first": ["/v1/*", "/api/*", "/auth/*", "/healthz", "/install.ps1", "/install.sh"]
   },
 
   "d1_databases": [
@@ -41,6 +41,8 @@
     // Hackatime username or Slack ID for the Hackatime panel (public stats
     // only). Leave empty to use your Hack Club sign-in, or set the
     // HACKATIME_API_KEY secret instead to read private stats.
-    "HACKATIME_USER": ""
+    "HACKATIME_USER": "",
+    // Where the one-line installers download snapshot-agent releases from.
+    "CLI_REPO": "JakeOJeff/flockatime-cli"
   }
 }

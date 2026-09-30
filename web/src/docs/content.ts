@@ -29,7 +29,8 @@ export const SECTIONS: Section[] = [
   },
   { title: 'Dashboard', icon: 'chart', slugs: ['dashboard-home', 'dashboard-projects', 'data-sources', 'keys', 'hackatime'] },
   { title: 'Self-hosting', icon: 'server', slugs: ['self-host', 'auth', 'env', 'local-dev'] },
-  { title: 'API reference', icon: 'code', slugs: ['api-ingest', 'api-dashboard'] },
+  // API reference (api-ingest, api-dashboard) is hidden for now; its pages stay
+  // in pages/ so adding this line back restores it.
   { title: 'Troubleshooting', icon: 'lifebuoy', slugs: ['troubleshooting', 'limits'] },
 ];
 

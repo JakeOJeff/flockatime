@@ -9,7 +9,7 @@ rocket | Quick start | Set up flockatime in a few minutes. | quick-start
 terminal | Install the CLI | One command on Windows, macOS or Linux. | install-windows
 sliders | Configuration | Tune the agent's interval, projects and queue. | cli-config
 chart | Reading the dashboard | What every tile and chart means. | dashboard-projects
-code | API reference | The ingest and dashboard endpoints. | api-ingest
+server | Self-hosting | Run flockatime on your own Cloudflare account. | self-host
 lifebuoy | Troubleshooting | Solve common setup problems. | troubleshooting
 ```
 

@@ -15,7 +15,17 @@ import { href, type User } from '../App';
 import { Donut } from '../charts/Donut';
 import { DailyTime } from '../charts/DailyTime';
 import { RankBars } from '../charts/RankBars';
-import { PageHead, RangeFilter, Tile, rangeLabel } from '../ui';
+import {
+  PageHead,
+  RangeFilter,
+  SourceFilter,
+  SourceTag,
+  Tile,
+  rangeLabel,
+  showCli,
+  showHt,
+  type Source,
+} from '../ui';
 
 export const HT_ERRORS: Record<string, string> = {
   not_found:
@@ -45,11 +55,15 @@ export function Home({
   days,
   setDays,
   ht,
+  source,
+  setSource,
 }: {
   user: User | null;
   days: number;
   setDays: (d: number) => void;
   ht: Hackatime | null;
+  source: Source;
+  setSource: (s: Source) => void;
 }) {
   const [today, setToday] = useState<HtOk | null>(null);
   const [projects, setProjects] = useState<ProjectRow[] | null>(null);
@@ -64,7 +78,8 @@ export function Home({
       .catch(() => undefined);
   }, []);
 
-  const ok = htOk(ht);
+  const ok = showHt(source) ? htOk(ht) : null;
+  const latest = projects?.reduce((m, p) => Math.max(m, p.received_at ?? 0), 0) || null;
   const dayList = useMemo(() => dayRange(Math.min(days, 90)), [days]);
   const series = useMemo(
     () =>
@@ -86,7 +101,13 @@ export function Home({
         }
       >
         <p className="lede">
-          {today === null
+          {source === 'cli'
+            ? projects === null
+              ? ' '
+              : `${projects.length} project${projects.length === 1 ? '' : 's'} snapshotted${
+                  latest ? `, last received ${clock(latest)}` : ''
+                }.`
+            : today === null
             ? ' '
             : todaySeconds > 0
               ? `Today, you've logged ${humanDuration(todaySeconds)}${
@@ -98,13 +119,14 @@ export function Home({
 
       <div className="filters">
         <RangeFilter days={days} onChange={setDays} />
+        <SourceFilter source={source} onChange={setSource} />
       </div>
 
-      {ht === null && <div className="card empty">Loading Hackatime…</div>}
-      {ht && !ht.configured && (
+      {showHt(source) && ht === null && <div className="card empty">Loading Hackatime…</div>}
+      {showHt(source) && ht && !ht.configured && (
         <div className="card empty">Sign in, or set HACKATIME_USER / HACKATIME_API_KEY, to show Hackatime stats.</div>
       )}
-      {ht && ht.configured && ht.error && <div className="card empty">{HT_ERRORS[ht.error]}</div>}
+      {showHt(source) && ht && ht.configured && ht.error && <div className="card empty">{HT_ERRORS[ht.error]}</div>}
 
       {ok && (
         <>
@@ -119,28 +141,43 @@ export function Home({
 
           <div className="grid-2">
             <div className="card">
-              <h2>Project durations</h2>
+              <h2>
+                Project durations
+                <SourceTag source="hackatime" />
+              </h2>
               <RankBars
                 limit={10}
                 rows={ok.projects.map((p) => ({ name: p.name, seconds: p.total_seconds, percent: p.percent }))}
               />
             </div>
             <div className="card">
-              <h2>Languages</h2>
+              <h2>
+                Languages
+                <SourceTag source="hackatime" />
+              </h2>
               <Donut label="Languages" rows={slices(ok.languages)} />
             </div>
             <div className="card">
-              <h2>Editors</h2>
+              <h2>
+                Editors
+                <SourceTag source="hackatime" />
+              </h2>
               <Donut label="Editors" rows={slices(ok.editors)} />
             </div>
             <div className="card">
-              <h2>Operating systems</h2>
+              <h2>
+                Operating systems
+                <SourceTag source="hackatime" />
+              </h2>
               <Donut label="Operating systems" rows={slices(ok.operating_systems)} />
             </div>
           </div>
 
           <div className="card">
-            <h2>Coding time per day</h2>
+            <h2>
+              Coding time per day
+              <SourceTag source="hackatime" />
+            </h2>
             <p className="sub">
               {days > 90 ? 'The last 90 days' : rangeLabel(days)}, averaging {humanDuration(ok.daily_average)} a
               day.
@@ -150,9 +187,12 @@ export function Home({
         </>
       )}
 
-      {projects && projects.length > 0 && (
+      {showCli(source) && projects && projects.length > 0 && (
         <div className="card">
-          <h2>Snapshotted by flockatime</h2>
+          <h2>
+            Snapshotted by flockatime
+            <SourceTag source="cli" />
+          </h2>
           <p className="sub">Projects the agent is watching. Open one for its lines, churn and sessions.</p>
           <ul className="plist">
             {projects.map((p) => (
@@ -168,7 +208,7 @@ export function Home({
           </ul>
         </div>
       )}
-      {projects && projects.length === 0 && (
+      {showCli(source) && projects && projects.length === 0 && (
         <div className="card">
           <h2>No projects yet</h2>
           <p className="sub">

@@ -1,7 +1,8 @@
-import type { Hackatime } from '../api';
+import { useEffect, useState } from 'react';
+import { clock, humanDuration, listProjects, type Hackatime, type ProjectRow } from '../api';
 import type { User } from '../App';
 import { KeysCard } from '../ConnectCli';
-import { PageHead } from '../ui';
+import { PageHead, SourceTag } from '../ui';
 import { HT_ERRORS } from './Home';
 
 const SOURCES: Record<string, string> = {
@@ -36,8 +37,14 @@ export function Settings({ user, ht }: { user: User | null; ht: Hackatime | null
         )}
       </div>
 
+      <CliStatus />
+
       <div className="card">
-        <h2>Hackatime</h2>
+        <h2>
+          Hackatime
+          <SourceTag source="hackatime" />
+        </h2>
+        <p className="sub">Editor time from the Hackatime plugins, read from hackatime.hackclub.com.</p>
         {ht === null && <p className="sub">Checking…</p>}
         {ht && !ht.configured && <p className="sub">Not connected.</p>}
         {ht && ht.configured && (
@@ -52,5 +59,55 @@ export function Settings({ user, ht }: { user: User | null; ht: Hackatime | null
 
       <KeysCard />
     </>
+  );
+}
+
+/**
+ * What this server has from the snapshot CLI, for debugging it apart from
+ * Hackatime: whether anything has arrived, when, and from which agent build.
+ */
+function CliStatus() {
+  const [projects, setProjects] = useState<ProjectRow[] | null>(null);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    listProjects()
+      .then((r) => setProjects(r.projects))
+      .catch(() => setError(true));
+  }, []);
+
+  const latest = projects?.reduce<ProjectRow | null>(
+    (m, p) => ((p.received_at ?? 0) > (m?.received_at ?? 0) ? p : m),
+    null,
+  );
+  const versions = [...new Set((projects ?? []).map((p) => p.agent_version).filter(Boolean))];
+  const lag = latest?.received_at && latest.captured_at ? latest.received_at - latest.captured_at : null;
+
+  return (
+    <div className="card">
+      <h2>
+        Snapshot CLI
+        <SourceTag source="cli" />
+      </h2>
+      <p className="sub">File-tree snapshots sent by snapshot-agent on your machines, stored on this server.</p>
+      {error && <p className="sub">Could not load snapshot status.</p>}
+      {!error && projects === null && <p className="sub">Checking…</p>}
+      {projects && (
+        <dl className="facts">
+          <dt>Projects</dt>
+          <dd>{projects.length}</dd>
+          <dt>Last snapshot received</dt>
+          <dd>
+            {latest?.received_at
+              ? `${clock(latest.received_at)} (${latest.name})${
+                  lag !== null && lag > 120 ? `, ${humanDuration(lag)} after capture` : ''
+                }`
+              : 'Nothing received yet. Connect a machine below.'}
+          </dd>
+          <dt>Agent version</dt>
+          <dd>{versions.length ? versions.join(', ') : '—'}</dd>
+        </dl>
+      )}
+    </div>
   );
 }

@@ -32,6 +32,33 @@ export function RangeFilter({ days, onChange }: { days: number; onChange: (d: nu
   );
 }
 
+/**
+ * Where a panel's numbers come from. The snapshot CLI (this server's agent) and
+ * Hackatime (editor plugins, fetched from hackatime.hackclub.com) are separate
+ * pipelines, so the dashboard can show either on its own to debug one of them.
+ */
+export type Source = 'all' | 'cli' | 'hackatime';
+
+export const showCli = (s: Source) => s !== 'hackatime';
+export const showHt = (s: Source) => s !== 'cli';
+
+export function SourceFilter({ source, onChange }: { source: Source; onChange: (s: Source) => void }) {
+  return (
+    <Filter label="Data source">
+      <select value={source} onChange={(e) => onChange(e.target.value as Source)}>
+        <option value="all">All sources</option>
+        <option value="cli">Snapshot CLI only</option>
+        <option value="hackatime">Hackatime only</option>
+      </select>
+    </Filter>
+  );
+}
+
+/** A small label naming a panel's source. */
+export function SourceTag({ source }: { source: 'cli' | 'hackatime' }) {
+  return <span className={`src-tag ${source}`}>{source === 'cli' ? 'Snapshot CLI' : 'Hackatime'}</span>;
+}
+
 export function Tile({
   label,
   value,

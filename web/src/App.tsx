@@ -6,6 +6,7 @@ import { Projects } from './pages/Projects';
 import { Docs } from './pages/Docs';
 import { Extensions } from './pages/Extensions';
 import { Settings } from './pages/Settings';
+import type { Source } from './ui';
 
 export interface User {
   name: string | null;
@@ -56,9 +57,29 @@ function parseHash(hash: string): { page: Page; project: string | null } {
 export const href = (page: Page, project?: string) =>
   `#/${page === 'home' ? '' : page}${project ? `/${encodeURIComponent(project)}` : ''}`;
 
+/** The data source filter is remembered per browser, so a debugging view survives a reload. */
+const SOURCE_KEY = 'fk_source';
+function readSource(): Source {
+  try {
+    const v = localStorage.getItem(SOURCE_KEY);
+    return v === 'cli' || v === 'hackatime' ? v : 'all';
+  } catch {
+    return 'all';
+  }
+}
+
 function Shell({ user }: { user: User | null }) {
   const [route, setRoute] = useState(() => parseHash(location.hash));
   const [days, setDays] = useState(7);
+  const [source, setSourceState] = useState<Source>(readSource);
+  const setSource = (s: Source) => {
+    setSourceState(s);
+    try {
+      localStorage.setItem(SOURCE_KEY, s);
+    } catch {
+      // Only a convenience; the filter still works for this visit.
+    }
+  };
   const [ht, setHt] = useState<Hackatime | null>(null);
 
   useEffect(() => {
@@ -121,9 +142,16 @@ function Shell({ user }: { user: User | null }) {
       </aside>
 
       <main className="main">
-        {route.page === 'home' && <Home user={user} days={days} setDays={setDays} ht={ht} />}
+        {route.page === 'home' && <Home user={user} days={days} setDays={setDays} ht={ht} source={source} setSource={setSource} />}
         {route.page === 'projects' && (
-          <Projects project={route.project} days={days} setDays={setDays} ht={ht} />
+          <Projects
+            project={route.project}
+            days={days}
+            setDays={setDays}
+            ht={ht}
+            source={source}
+            setSource={setSource}
+          />
         )}
         {route.page === 'docs' && <Docs />}
         {route.page === 'extensions' && <Extensions />}

@@ -1,30 +1,70 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
+  SignedOutError,
   clock,
+  dayRange,
   getChurn,
   getCommits,
+  getHackatime,
   getMe,
+  getRhythm,
   getSessions,
   getSummary,
   getTimeline,
   humanDuration,
   listProjects,
+  localDay,
   num,
+  setSignedOutHandler,
   shortSha,
   type ChurnRow,
   type CommitRow,
+  type Hackatime,
   type ProjectRow,
+  type RhythmCell,
   type SessionRow,
   type SnapshotRow,
   type Summary,
 } from './api';
 import { TotalLines } from './charts/TotalLines';
 import { Churn } from './charts/Churn';
+import { DailyTime } from './charts/DailyTime';
+import { Heatmap } from './charts/Heatmap';
+import { RankBars } from './charts/RankBars';
+import { LoggedOut } from './LoggedOut';
 
 const RANGES = [1, 7, 30, 90];
 const POLL_MS = 10_000;
 
+type Auth = { state: 'loading' } | { state: 'out' } | { state: 'in'; who: string | null };
+
+/**
+ * The sign-in gate. Nothing but the logged-out screen renders without a
+ * session, and any 401 later (expiry, allowlist change) drops back to it.
+ */
 export default function App() {
+  const [auth, setAuth] = useState<Auth>({ state: 'loading' });
+  const [reason] = useState(() => new URLSearchParams(location.search).get('auth_error'));
+
+  useEffect(() => {
+    // The reason code is read once; keep it out of the address bar after that.
+    if (reason) history.replaceState(null, '', location.pathname);
+    setSignedOutHandler(() => setAuth({ state: 'out' }));
+    getMe()
+      .then((r) =>
+        setAuth(
+          r.auth && !r.user ? { state: 'out' } : { state: 'in', who: r.user ? r.user.name ?? r.user.email : null },
+        ),
+      )
+      .catch(() => setAuth({ state: 'out' }));
+  }, [reason]);
+
+  if (auth.state === 'loading') return null;
+  if (auth.state === 'out') return <LoggedOut reason={reason} />;
+  return <Dashboard who={auth.who} />;
+}
+
+function Dashboard({ who }: { who: string | null }) {
   const [projects, setProjects] = useState<ProjectRow[] | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [days, setDays] = useState(7);
@@ -34,15 +74,14 @@ export default function App() {
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [commits, setCommits] = useState<CommitRow[]>([]);
   const [hot, setHot] = useState<ChurnRow[]>([]);
+  const [rhythm, setRhythm] = useState<RhythmCell[]>([]);
+  const [ht, setHt] = useState<Hackatime | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<number | null>(null);
-  const [me, setMe] = useState<string | null>(null);
 
-  useEffect(() => {
-    getMe()
-      .then((r) => setMe(r.user ? r.user.name ?? r.user.email : null))
-      .catch(() => undefined);
-  }, []);
+  const report = (e: unknown) => {
+    if (!(e instanceof SignedOutError)) setError(String(e));
+  };
 
   useEffect(() => {
     listProjects()
@@ -50,11 +89,24 @@ export default function App() {
         setProjects(r.projects);
         setSelected((cur) => cur ?? r.projects[0]?.name ?? null);
       })
-      .catch((e) => setError(String(e)));
+      .catch(report);
   }, []);
 
-  // Full load, including churn — that endpoint walks trees out of R2, so it is
-  // only refetched when the project or the window actually changes.
+  // Hackatime is account-wide, not per project, and slow-moving: fetched when
+  // the window changes, never polled. A failure only empties its own panel.
+  useEffect(() => {
+    let live = true;
+    setHt(null);
+    getHackatime(days)
+      .then((r) => live && setHt(r))
+      .catch(() => live && setHt({ configured: true, source: 'hack_club', error: 'unavailable' }));
+    return () => {
+      live = false;
+    };
+  }, [days]);
+
+  // Full load, including churn — that endpoint unpacks stored file lists, so it
+  // is only refetched when the project or the window actually changes.
   useEffect(() => {
     if (!selected) return;
     let live = true;
@@ -66,16 +118,18 @@ export default function App() {
       getSessions(selected, days),
       getCommits(selected, days),
       getChurn(selected, days),
+      getRhythm(selected, days),
     ])
-      .then(([t, s, ss, cm, c]) => {
+      .then(([t, s, ss, cm, c, rh]) => {
         if (!live) return;
         setTimeline(t.snapshots);
         setSummary(s);
         setSessions(ss.sessions);
         setCommits(cm.commits);
         setHot(c.files);
+        setRhythm(rh.cells);
       })
-      .catch((e) => live && setError(String(e)));
+      .catch((e) => live && report(e));
 
     return () => {
       live = false;
@@ -120,12 +174,34 @@ export default function App() {
   const current = projects?.find((p) => p.name === selected) ?? null;
   const totals = summary?.totals;
   const activeSeconds = sessions.reduce((acc, s) => acc + s.seconds, 0);
+  const longest = sessions.reduce((acc, s) => Math.max(acc, s.seconds), 0);
+  const htOk = ht && ht.configured && !ht.error ? ht : null;
+  const htProject = htOk?.projects.find((p) => p.name.toLowerCase() === selected?.toLowerCase()) ?? null;
+  const netLines = (totals?.lines_added ?? 0) - (totals?.lines_removed ?? 0);
 
   // Snapshots that came out of the offline queue were captured long before they
   // arrived. Every chart here is drawn on the agent clock, so say so rather than
   // letting a replayed backlog read as live activity.
   const delayedTicks = totals?.delayed_ticks ?? 0;
   const maxLag = totals?.max_lag_seconds ?? 0;
+
+  const dayList = useMemo(() => dayRange(days), [days]);
+  const timeSeries = useMemo(() => {
+    const tree = new Map<string, number>();
+    for (const s of sessions) {
+      const d = localDay(s.started_at);
+      tree.set(d, (tree.get(d) ?? 0) + s.seconds);
+    }
+    const out = [{ label: 'Tree moving (flockatime)', color: 'var(--series-1)', values: tree }];
+    if (htOk) {
+      out.push({
+        label: 'Editor time (Hackatime)',
+        color: 'var(--cat-2)',
+        values: new Map(htOk.daily.map((d) => [d.day, d.seconds])),
+      });
+    }
+    return out;
+  }, [sessions, htOk]);
 
   return (
     <div className="wrap">
@@ -138,9 +214,9 @@ export default function App() {
               : 'waiting for the first snapshot'}
             {lastSync && <span className="live" title="Auto-refreshing every 10s" />}
           </div>
-          {me && (
+          {who && (
             <div className="muted">
-              {me} · <a href="/auth/logout">Sign out</a>
+              {who} · <a href="/auth/logout">Sign out</a>
             </div>
           )}
         </div>
@@ -194,14 +270,18 @@ export default function App() {
 
       {selected && (
         <>
-          {/* KPI row: headline numbers as stat tiles, not a one-bar chart. */}
+          {/* KPI rows: headline numbers as stat tiles, not one-bar charts. */}
           <div className="tiles">
             <Tile label="Lines" value={num(current?.total_lines)} sub={`${num(current?.file_count)} files`} />
-            <Tile label="Active time" value={humanDuration(activeSeconds)} sub={`${sessions.length} sessions`} />
             <Tile
-              label="Lines added"
-              value={`+${num(totals?.lines_added)}`}
-              sub={`−${num(totals?.lines_removed)} removed`}
+              label="Active time"
+              value={humanDuration(activeSeconds)}
+              sub={`${sessions.length} sessions · longest ${humanDuration(longest)}`}
+            />
+            <Tile
+              label="Net lines"
+              value={`${netLines >= 0 ? '+' : '−'}${num(Math.abs(netLines))}`}
+              sub={`+${num(totals?.lines_added)} / −${num(totals?.lines_removed)}`}
             />
             <Tile
               label="Branch"
@@ -210,6 +290,42 @@ export default function App() {
                 current?.git_dirty ? 'dirty' : 'clean'
               } · ${num(current?.git_ahead)} ahead`}
             />
+          </div>
+          <div className="tiles">
+            <Tile
+              label="Files changed"
+              value={num(
+                (totals?.files_added ?? 0) + (totals?.files_removed ?? 0) + (totals?.files_modified ?? 0),
+              )}
+              sub={`+${num(totals?.files_added)} new · −${num(totals?.files_removed)} gone · ${num(
+                totals?.files_modified,
+              )} edited`}
+            />
+            <Tile
+              label="Snapshots"
+              value={num(totals?.ticks)}
+              sub={`${num(totals?.active_ticks)} with changes (${pct(totals?.active_ticks, totals?.ticks)})`}
+            />
+            <Tile
+              label="Commits worked on"
+              value={num(totals?.commits)}
+              sub={`across ${num(totals?.branches)} branch${totals?.branches === 1 ? '' : 'es'}`}
+            />
+            <Tile
+              label="Lines per active hour"
+              value={activeSeconds > 0 ? num(Math.round(((totals?.lines_added ?? 0) * 3600) / activeSeconds)) : '—'}
+              sub="lines added ÷ active time"
+            />
+          </div>
+
+          <div className="card">
+            <h2>Coding time per day</h2>
+            <p className="sub">
+              {htOk
+                ? 'How long this project’s tree was moving, beside total editor time from Hackatime (all projects).'
+                : 'How long this project’s tree was moving each day.'}
+            </p>
+            <DailyTime days={dayList} series={timeSeries} />
           </div>
 
           <div className="card">
@@ -223,6 +339,14 @@ export default function App() {
             <p className="sub">Lines added above the line, removed below.</p>
             <Churn rows={summary?.daily ?? []} />
           </div>
+
+          <div className="card">
+            <h2>Weekly rhythm</h2>
+            <p className="sub">When the tree moves, by weekday and hour in your timezone.</p>
+            <Heatmap cells={rhythm} />
+          </div>
+
+          <HackatimeCard ht={ht} project={selected} projectSeconds={htProject?.total_seconds ?? null} />
 
           <div className="card">
             <h2>Sessions</h2>
@@ -350,9 +474,123 @@ export default function App() {
           </div>
         </>
       )}
+
+      {projects && projects.length > 0 && (
+        <div className="card">
+          <h2>All projects</h2>
+          <p className="sub">Latest snapshot of every project the agent has sent. Click one to open it.</p>
+          <div className="scroll-x">
+            <table>
+              <thead>
+                <tr>
+                  <th>Project</th>
+                  <th>Lines</th>
+                  <th>Files</th>
+                  <th>Branch</th>
+                  <th>State</th>
+                  <th>Last snapshot</th>
+                  <th>Agent</th>
+                </tr>
+              </thead>
+              <tbody>
+                {projects.map((p) => (
+                  <tr
+                    key={p.name}
+                    className={p.name === selected ? 'row-link current' : 'row-link'}
+                    onClick={() => setSelected(p.name)}
+                  >
+                    <td>{p.name}</td>
+                    <td>{num(p.total_lines)}</td>
+                    <td>{num(p.file_count)}</td>
+                    <td>{p.git_branch ?? '—'}</td>
+                    <td>{p.git_head ? `${p.git_dirty ? 'dirty' : 'clean'} · ${num(p.git_ahead)} ahead` : '—'}</td>
+                    <td>{p.captured_at ? clock(p.captured_at) : '—'}</td>
+                    <td className="hash">{p.agent_version ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
+const HT_ERRORS: Record<string, string> = {
+  not_found:
+    'Hackatime has no account matching your Hack Club sign-in. Set HACKATIME_USER or the HACKATIME_API_KEY secret.',
+  private: 'Your Hackatime stats are private. Set the HACKATIME_API_KEY secret to read them.',
+  bad_key: 'Hackatime rejected the HACKATIME_API_KEY secret. Check it on hackatime.hackclub.com.',
+  unavailable: 'Hackatime could not be reached. It will be retried when you change the window.',
+};
+
+function HackatimeCard({
+  ht,
+  project,
+  projectSeconds,
+}: {
+  ht: Hackatime | null;
+  project: string;
+  projectSeconds: number | null;
+}) {
+  return (
+    <div className="card">
+      <h2>Hackatime</h2>
+      <p className="sub">
+        Editor time from{' '}
+        <a href="https://hackatime.hackclub.com" target="_blank" rel="noreferrer">
+          hackatime.hackclub.com
+        </a>
+        , across every project — not just this one.
+        {ht && ht.configured && !ht.error && ht.username ? ` Hackatime user: ${ht.username}.` : ''}
+      </p>
+
+      {ht === null && <div className="empty">Loading Hackatime…</div>}
+      {ht && !ht.configured && (
+        <div className="empty">Sign in, or set HACKATIME_USER / HACKATIME_API_KEY, to show Hackatime stats.</div>
+      )}
+      {ht && ht.configured && ht.error && <div className="empty">{HT_ERRORS[ht.error]}</div>}
+
+      {ht && ht.configured && !ht.error && (
+        <>
+          <div className="tiles inset">
+            <Tile label="Coded" value={humanDuration(ht.total_seconds)} sub="in this window" />
+            <Tile label="Daily average" value={humanDuration(ht.daily_average)} sub="per day, per Hackatime" />
+            <Tile label="Streak" value={`${ht.streak} day${ht.streak === 1 ? '' : 's'}`} sub="consecutive days" />
+            <Tile
+              label={`On ${project}`}
+              value={projectSeconds === null ? '—' : humanDuration(projectSeconds)}
+              sub={projectSeconds === null ? 'no Hackatime project by this name' : 'Hackatime project time'}
+            />
+          </div>
+          <div className="split">
+            <div>
+              <h3>Languages</h3>
+              <RankBars
+                rows={ht.languages.map((l) => ({ name: l.name, seconds: l.total_seconds, percent: l.percent }))}
+              />
+            </div>
+            <div>
+              <h3>Projects</h3>
+              <RankBars
+                rows={ht.projects.map((p) => ({
+                  name: p.name,
+                  seconds: p.total_seconds,
+                  percent: p.percent,
+                  current: p.name.toLowerCase() === project.toLowerCase(),
+                }))}
+              />
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+const pct = (part: number | null | undefined, whole: number | null | undefined) =>
+  whole ? `${Math.round(((part ?? 0) / whole) * 100)}%` : '—';
 
 function Tile({ label, value, sub }: { label: string; value: string; sub: string }) {
   return (

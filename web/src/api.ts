@@ -77,17 +77,71 @@ export interface Summary {
     /** Snapshots that arrived from the offline queue rather than live. */
     delayed_ticks: number | null;
     max_lag_seconds: number | null;
+    files_added: number | null;
+    files_removed: number | null;
+    files_modified: number | null;
+    commits: number | null;
+    branches: number | null;
+    first_seen: number | null;
+    last_seen: number | null;
   } | null;
   daily: DailyRow[];
   lag_threshold_seconds: number;
 }
 
+/** One weekday × hour cell. dow 0 = Sunday, in the viewer's timezone. */
+export interface RhythmCell {
+  dow: number;
+  hour: number;
+  active_ticks: number;
+  lines_moved: number;
+}
+
+export interface HackatimeSlice {
+  name: string;
+  total_seconds: number;
+  percent: number;
+}
+
+export type Hackatime =
+  | { configured: false }
+  | {
+      configured: true;
+      source: 'api_key' | 'username' | 'hack_club';
+      error: 'not_found' | 'private' | 'bad_key' | 'unavailable';
+    }
+  | {
+      configured: true;
+      source: 'api_key' | 'username' | 'hack_club';
+      error?: undefined;
+      username: string | null;
+      total_seconds: number;
+      daily_average: number;
+      streak: number;
+      languages: HackatimeSlice[];
+      projects: HackatimeSlice[];
+      daily: { day: string; seconds: number }[];
+      /** Seconds per local hour of day, 0–23. */
+      hours: number[];
+    };
+
+/** The viewer's UTC offset in minutes, so the server cuts days where they do. */
+const tz = () => -new Date().getTimezoneOffset();
+
+/** The session is gone (signed out, expired, or removed from the allowlist). */
+export class SignedOutError extends Error {}
+
+/** Called on any 401, so the app can drop to the logged-out screen. */
+let onSignedOut: () => void = () => undefined;
+export const setSignedOutHandler = (fn: () => void) => {
+  onSignedOut = fn;
+};
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(path, { headers: { accept: 'application/json' } });
   if (res.status === 401) {
-    // No session (or it expired): hand off to Hack Club Auth.
-    window.location.href = '/auth/login';
-    throw new Error('signing in…');
+    onSignedOut();
+    throw new SignedOutError('signed out');
   }
   if (!res.ok) throw new Error(`${path} -> ${res.status}`);
   return (await res.json()) as T;
@@ -97,13 +151,20 @@ async function get<T>(path: string): Promise<T> {
 export const getMe = () =>
   get<{ auth: boolean; user: { email: string; name: string | null } | null }>('/auth/me');
 
-export const listProjects =() => get<{ projects: ProjectRow[] }>('/api/projects');
+export const listProjects = () => get<{ projects: ProjectRow[] }>('/api/projects');
 
 export const getTimeline = (name: string, days: number) =>
   get<{ snapshots: SnapshotRow[] }>(`/api/projects/${encodeURIComponent(name)}/timeline?days=${days}`);
 
 export const getSummary = (name: string, days: number) =>
-  get<Summary>(`/api/projects/${encodeURIComponent(name)}/summary?days=${days}`);
+  get<Summary>(`/api/projects/${encodeURIComponent(name)}/summary?days=${days}&tz=${tz()}`);
+
+export const getRhythm = (name: string, days: number) =>
+  get<{ cells: RhythmCell[] }>(
+    `/api/projects/${encodeURIComponent(name)}/rhythm?days=${days}&tz=${tz()}`,
+  );
+
+export const getHackatime = (days: number) => get<Hackatime>(`/api/hackatime?days=${days}&tz=${tz()}`);
 
 export const getSessions = (name: string, days: number) =>
   get<{ sessions: SessionRow[]; gap_seconds: number }>(
@@ -142,8 +203,29 @@ export const clock = (unix: number) =>
 
 export const dayLabel = (day: string) => {
   const [y, m, d] = day.split('-').map(Number);
+  // Built at UTC midnight, so format in UTC too — otherwise anyone west of
+  // Greenwich sees the previous day.
   return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString(undefined, {
     month: 'short',
     day: 'numeric',
+    timeZone: 'UTC',
   });
 };
+
+/** YYYY-MM-DD for a unix time, in the viewer's timezone. */
+export const localDay = (unix: number) => {
+  const d = new Date(unix * 1000);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+
+/** Every local day in the last `days` days, oldest first, so empty days still plot. */
+export function dayRange(days: number): string[] {
+  const out: string[] = [];
+  const now = Date.now() / 1000;
+  for (let i = days - 1; i >= 0; i--) out.push(localDay(now - i * 86400));
+  return [...new Set(out)];
+}
+
+/** Hours for an axis: whole when it is whole ("6h", not "6.0h"), else one decimal. */
+export const hours = (seconds: number) => `${Number((seconds / 3600).toFixed(1))}h`;

@@ -153,17 +153,24 @@ api.get('/api/projects/:name/summary', async (c) => {
                 + COALESCE(files_modified,0))                    AS files_touched,
             SUM(CASE WHEN received_at - captured_at > ?3
                      THEN 1 ELSE 0 END)                          AS delayed_ticks,
-            MAX(received_at - captured_at)                       AS max_lag_seconds
+            MAX(received_at - captured_at)                       AS max_lag_seconds,
+            SUM(files_added)                                     AS files_added,
+            SUM(files_removed)                                   AS files_removed,
+            SUM(files_modified)                                  AS files_modified,
+            COUNT(DISTINCT git_head)                             AS commits,
+            COUNT(DISTINCT git_branch)                           AS branches,
+            MIN(captured_at)                                     AS first_seen,
+            MAX(captured_at)                                     AS last_seen
        FROM snapshots
       WHERE project_id = ?1 AND captured_at >= ?2`,
   )
     .bind(id, from, LAG_THRESHOLD_SECONDS)
     .first();
 
-  // strftime on a unix column gives UTC days. Good enough for a roll-up; swap
-  // to a stored local-day column if the heatmap ever needs the user's timezone.
+  // Days are cut in the viewer's timezone (`tz`), so they line up with the
+  // Hackatime daily totals, which are bucketed the same way.
   const { results: daily } = await c.env.DB.prepare(
-    `SELECT strftime('%Y-%m-%d', captured_at, 'unixepoch')       AS day,
+    `SELECT strftime('%Y-%m-%d', captured_at, 'unixepoch', ?3)   AS day,
             SUM(CASE WHEN unchanged = 0 THEN 1 ELSE 0 END)       AS active_ticks,
             SUM(CASE WHEN lines_delta > 0 THEN lines_delta END)  AS lines_added,
             SUM(CASE WHEN lines_delta < 0 THEN -lines_delta END) AS lines_removed
@@ -171,10 +178,43 @@ api.get('/api/projects/:name/summary', async (c) => {
       WHERE project_id = ?1 AND captured_at >= ?2
       GROUP BY day ORDER BY day ASC`,
   )
-    .bind(id, from)
+    .bind(id, from, `${tzOffsetMinutes(c)} minutes`)
     .all();
 
   return c.json({ totals, daily, lag_threshold_seconds: LAG_THRESHOLD_SECONDS });
+});
+
+/**
+ * The viewer's UTC offset in minutes (`tz`, as -Date#getTimezoneOffset()), as an
+ * SQLite date modifier. Clamped to real offsets so it is safe to interpolate.
+ */
+export function tzOffsetMinutes(c: { req: { query: (k: string) => string | undefined } }): number {
+  const tz = Math.trunc(Number(c.req.query('tz') ?? 0)) || 0;
+  return Math.min(Math.max(tz, -840), 840);
+}
+
+/**
+ * When in the week the tree moves: active ticks and lines moved per weekday ×
+ * hour, in the viewer's timezone so "9pm" means their 9pm.
+ */
+api.get('/api/projects/:name/rhythm', async (c) => {
+  const id = await projectId(c.env, c.req.param('name'));
+  if (id === null) return c.json({ error: 'unknown project' }, 404);
+  const shift = `${tzOffsetMinutes(c)} minutes`;
+
+  const { results } = await c.env.DB.prepare(
+    `SELECT CAST(strftime('%w', captured_at, 'unixepoch', ?3) AS INTEGER) AS dow,
+            CAST(strftime('%H', captured_at, 'unixepoch', ?3) AS INTEGER) AS hour,
+            COUNT(*)                                                     AS active_ticks,
+            SUM(ABS(COALESCE(lines_delta, 0)))                           AS lines_moved
+       FROM snapshots
+      WHERE project_id = ?1 AND captured_at >= ?2 AND unchanged = 0
+      GROUP BY dow, hour`,
+  )
+    .bind(id, windowStart(c), shift)
+    .all();
+
+  return c.json({ cells: results });
 });
 
 /**

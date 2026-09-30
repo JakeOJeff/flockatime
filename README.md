@@ -16,6 +16,7 @@ src/          Worker — Hono routes
   trees.ts      file-list packing + diffing
   auth.ts       bearer keys, dashboard session gate
   oauth.ts      GET  /auth/*         (Hack Club Auth sign-in)
+  hackatime.ts  GET  /api/hackatime  (Hackatime stats proxy)
 migrations/   D1 schema
 web/          Vite + React dashboard, built to web/dist
 scripts/      key minting
@@ -108,13 +109,31 @@ so `wrangler dev` works without an OAuth app. To test sign-in locally, add
 `http://127.0.0.1:8787/auth/callback` to the app and put `REQUIRE_AUTH=true` plus
 the three settings above in `.dev.vars`.
 
+### Hackatime
+
+The dashboard shows editor time from [Hackatime](https://hackatime.hackclub.com)
+beside tree activity. The Worker proxies it, so no key reaches the browser. It
+picks who to ask for in this order:
+
+1. `HACKATIME_API_KEY` secret — your own key (Hackatime → Settings), reads your
+   stats even when they are private:
+   ```bash
+   npx wrangler secret put HACKATIME_API_KEY
+   ```
+2. `HACKATIME_USER` in `wrangler.jsonc` — a username or Slack ID; public stats only.
+3. The signed-in Hack Club Auth id — Hackatime can look users up by it; public
+   stats only.
+
+Hackatime time is account-wide (every project), and the panel matches a
+Hackatime project to the open flockatime project by name.
+
 ## Known limits
 
 - A late queue flush that lands *before* rows already stored gets a correct diff
   itself, but the row that follows it keeps its original, now-stale summary. It is
   not recomputed.
-- Daily roll-ups group by UTC day. Store a local-day column if the heatmap ever
-  needs the viewer's timezone.
+- Daily roll-ups and the weekly heatmap are cut in the viewer's current UTC offset,
+  so days that crossed a DST change can be off by an hour at the edges.
 - Single-user: every row uses `account_id = 'local'`. The column is carried
   everywhere so multi-tenant needs no migration.
 - Storing the file lists in D1 rather than R2 buys a free deployment and costs a

@@ -3,6 +3,7 @@ import type { Env } from './types';
 import { ingest } from './ingest';
 import { api } from './api';
 import { oauth } from './oauth';
+import { hackatime } from './hackatime';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -11,6 +12,7 @@ app.get('/healthz', (c) => c.json({ ok: true }));
 app.route('/', ingest);
 app.route('/', api);
 app.route('/', oauth);
+app.route('/', hackatime);
 
 // wrangler.jsonc routes only /v1/*, /api/* and /auth/* through the Worker, so this is a
 // safety net: anything else that still lands here is a static asset request.

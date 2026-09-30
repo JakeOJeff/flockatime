@@ -52,6 +52,8 @@ export const SESSION_TTL_SECONDS = 7 * 86400;
 export interface SessionUser {
   email: string;
   name: string | null;
+  /** Hack Club Auth user id. Hackatime can look a user up by it. */
+  sub?: string;
   /** Unix seconds. Checked here too, so a replayed cookie dies on time. */
   exp: number;
 }

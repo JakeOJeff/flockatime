@@ -12,6 +12,10 @@ export interface Env {
   HACKCLUB_CLIENT_SECRET: string;
   /** Secret (`wrangler secret put`). Signs the session cookie. */
   SESSION_SECRET: string;
+  /** Optional secret: your Hackatime API key, for private stats. */
+  HACKATIME_API_KEY?: string;
+  /** Optional Hackatime username or Slack ID (public stats only). */
+  HACKATIME_USER?: string;
 }
 
 /** One file record as the agent sends it. Path is a hash, never the path. */

@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { deleteCookie, getSignedCookie, setSignedCookie } from 'hono/cookie';
 import type { Env } from './types';
 import { SESSION_COOKIE, SESSION_TTL_SECONDS, isAllowed, sessionUser, type SessionUser } from './auth';
@@ -19,6 +19,13 @@ export const oauth = new Hono<Ctx>();
 const redirectUri = (url: string) => new URL('/auth/callback', url).toString();
 const secure = (url: string) => new URL(url).protocol === 'https:';
 
+/**
+ * Back to the dashboard with a short reason code, which the logged-out screen
+ * turns into a message. Only fixed codes go in the URL, never provider text.
+ */
+type FailReason = 'not_configured' | 'cancelled' | 'expired' | 'failed' | 'no_email' | 'not_allowed';
+const failed = (c: Context<Ctx>, reason: FailReason) => c.redirect(`/?auth_error=${reason}`);
+
 function randomToken(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -26,7 +33,7 @@ function randomToken(): string {
 
 oauth.get('/auth/login', async (c) => {
   if (!c.env.HACKCLUB_CLIENT_ID || !c.env.SESSION_SECRET) {
-    return c.text('Hack Club Auth is not configured on this server.', 500);
+    return failed(c, 'not_configured');
   }
 
   const state = randomToken();
@@ -52,16 +59,16 @@ oauth.get('/auth/login', async (c) => {
 oauth.get('/auth/callback', async (c) => {
   const secret = c.env.SESSION_SECRET;
   if (!c.env.HACKCLUB_CLIENT_ID || !c.env.HACKCLUB_CLIENT_SECRET || !secret) {
-    return c.text('Hack Club Auth is not configured on this server.', 500);
+    return failed(c, 'not_configured');
   }
 
   const expected = await getSignedCookie(c, secret, STATE_COOKIE);
   deleteCookie(c, STATE_COOKIE, { path: '/auth', secure: secure(c.req.url) });
 
   const { code, state, error } = c.req.query();
-  if (error) return c.text(`Sign-in was cancelled or refused: ${error}`, 400);
+  if (error) return failed(c, 'cancelled');
   if (!code || !state || !expected || state !== expected) {
-    return c.text('Sign-in expired or was tampered with. Go back and try again.', 400);
+    return failed(c, 'expired');
   }
 
   const tokenRes = await fetch(`${HCA}/oauth/token`, {
@@ -77,30 +84,36 @@ oauth.get('/auth/callback', async (c) => {
   });
   if (!tokenRes.ok) {
     console.error('hca token exchange failed', tokenRes.status, await tokenRes.text());
-    return c.text('Could not complete sign-in with Hack Club.', 502);
+    return failed(c, 'failed');
   }
   const { access_token } = (await tokenRes.json()) as { access_token?: string };
-  if (!access_token) return c.text('Could not complete sign-in with Hack Club.', 502);
+  if (!access_token) return failed(c, 'failed');
 
   const infoRes = await fetch(`${HCA}/oauth/userinfo`, {
     headers: { authorization: `Bearer ${access_token}`, accept: 'application/json' },
   });
   if (!infoRes.ok) {
     console.error('hca userinfo failed', infoRes.status, await infoRes.text());
-    return c.text('Could not read your Hack Club profile.', 502);
+    return failed(c, 'failed');
   }
-  const info = (await infoRes.json()) as { email?: string; email_verified?: boolean; name?: string };
+  const info = (await infoRes.json()) as {
+    sub?: string;
+    email?: string;
+    email_verified?: boolean;
+    name?: string;
+  };
 
   if (!info.email || info.email_verified === false) {
-    return c.text('Your Hack Club account has no verified email.', 403);
+    return failed(c, 'no_email');
   }
   if (!isAllowed(c.env, info.email)) {
-    return c.text(`${info.email} is not allowed to view this dashboard.`, 403);
+    return failed(c, 'not_allowed');
   }
 
   const user: SessionUser = {
     email: info.email,
     name: info.name ?? null,
+    sub: info.sub,
     exp: Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS,
   };
   await setSignedCookie(c, SESSION_COOKIE, JSON.stringify(user), secret, {

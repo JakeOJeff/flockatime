@@ -229,3 +229,34 @@ export function dayRange(days: number): string[] {
 
 /** Hours for an axis: whole when it is whole ("6h", not "6.0h"), else one decimal. */
 export const hours = (seconds: number) => `${Number((seconds / 3600).toFixed(1))}h`;
+
+/* ---------- agent keys ---------- */
+
+export interface ApiKeyRow {
+  id: string;
+  label: string | null;
+  created_at: number;
+  last_used: number | null;
+  revoked_at: number | null;
+}
+
+export const listKeys = () => get<{ keys: ApiKeyRow[] }>('/api/keys');
+
+async function send<T>(method: 'POST' | 'DELETE', path: string, body: unknown): Promise<T> {
+  // JSON on purpose: the server refuses writes without it (CSRF guard).
+  const res = await fetch(path, {
+    method,
+    headers: { 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (res.status === 401) {
+    onSignedOut();
+    throw new SignedOutError('signed out');
+  }
+  if (!res.ok) throw new Error(`${path} -> ${res.status}`);
+  return (await res.json()) as T;
+}
+
+export const createKey = (label: string) => send<{ token: string }>('POST', '/api/keys', { label });
+
+export const revokeKey = (id: string) => send<{ ok: true }>('DELETE', `/api/keys/${id}`, {});

@@ -32,6 +32,7 @@ import { DailyTime } from './charts/DailyTime';
 import { Heatmap } from './charts/Heatmap';
 import { RankBars } from './charts/RankBars';
 import { LoggedOut } from './LoggedOut';
+import { ConnectCli } from './ConnectCli';
 
 const RANGES = [1, 7, 30, 90];
 const POLL_MS = 10_000;
@@ -258,15 +259,7 @@ function Dashboard({ who }: { who: string | null }) {
         </div>
       )}
 
-      {projects !== null && projects.length === 0 && (
-        <div className="card">
-          <h2>No snapshots yet</h2>
-          <p className="sub">
-            Point the agent at this server and run <code>snapshot-agent run</code>. Projects appear
-            here on the first successful POST.
-          </p>
-        </div>
-      )}
+      {projects !== null && projects.length === 0 && <ConnectCli intro />}
 
       {selected && (
         <>
@@ -513,6 +506,8 @@ function Dashboard({ who }: { who: string | null }) {
           </div>
         </div>
       )}
+
+      {projects && projects.length > 0 && <ConnectCli />}
     </div>
   );
 }

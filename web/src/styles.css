@@ -522,3 +522,59 @@ tr.row-link.current td:first-child {
   outline: 2px solid var(--text-primary);
   outline-offset: 2px;
 }
+
+/* ---------- connect the CLI ---------- */
+
+.cmd {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-top: 14px;
+  background: var(--surface-0);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 10px 10px 12px;
+}
+
+.cmd code {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.cmd-note {
+  margin: 8px 0 0;
+}
+
+.btn-secondary {
+  font: inherit;
+  font-weight: 600;
+  margin-top: 14px;
+  color: var(--surface-1);
+  background: var(--text-primary);
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+
+.btn-secondary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.link-btn {
+  font: inherit;
+  color: var(--series-2);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.keys {
+  margin-top: 18px;
+}

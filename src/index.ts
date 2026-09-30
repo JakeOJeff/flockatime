@@ -11,6 +11,15 @@ const app = new Hono<AppEnv>();
 
 app.get('/healthz', (c) => c.json({ ok: true }));
 
+// Everything under /api and /auth answers for one signed-in account, so no
+// browser or proxy cache may hand it to the next person on that machine.
+for (const path of ['/api/*', '/auth/*']) {
+  app.use(path, async (c, next) => {
+    await next();
+    c.header('cache-control', 'private, no-store');
+  });
+}
+
 app.route('/', ingest);
 app.route('/', api);
 app.route('/', oauth);

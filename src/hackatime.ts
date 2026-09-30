@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { AppEnv } from './types';
-import { isOwner, requireDashboard, sessionUser } from './auth';
+import { authOn, isOwner, requireDashboard, sessionUser } from './auth';
 import { tzOffsetMinutes } from './api';
 
 /**
@@ -56,8 +56,8 @@ const slim = (rows: Slice[] | undefined) =>
     .map(({ name, total_seconds, percent }) => ({ name, total_seconds, percent }));
 
 hackatime.get('/api/hackatime', async (c) => {
-  const session = c.env.REQUIRE_AUTH === 'true' ? await sessionUser(c) : null;
-  const owner = c.env.REQUIRE_AUTH !== 'true' || isOwner(c.env, session?.email);
+  const session = authOn(c.env) ? await sessionUser(c) : null;
+  const owner = !authOn(c.env) || isOwner(c.env, session?.email);
   const key = owner ? c.env.HACKATIME_API_KEY : undefined;
   const user = owner ? c.env.HACKATIME_USER : undefined;
   const who = key ? 'my' : user || session?.sub;

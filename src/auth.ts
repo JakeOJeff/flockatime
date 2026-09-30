@@ -19,7 +19,11 @@ function bearer(header: string | undefined): string | null {
 /** The account everything is filed under while REQUIRE_AUTH is off (local dev). */
 export const DEV_ACCOUNT = 'local';
 
-const authOn = (env: Env) => env.REQUIRE_AUTH === 'true';
+/**
+ * Fails closed: only an explicit "false" (.dev.vars) turns the gate off, so a
+ * missing or mistyped REQUIRE_AUTH in production cannot open the dashboard.
+ */
+export const authOn = (env: Env) => env.REQUIRE_AUTH !== 'false';
 
 /**
  * Ingest auth. The lookup is by hash, so no comparison runs against the raw

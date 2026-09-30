@@ -3,6 +3,7 @@ import { deleteCookie, getSignedCookie, setSignedCookie } from 'hono/cookie';
 import type { AppEnv, Env } from './types';
 import {
   DEV_ACCOUNT,
+  authOn,
   SESSION_COOKIE,
   SESSION_TTL_SECONDS,
   isAllowed,
@@ -174,7 +175,7 @@ oauth.get('/auth/logout', (c) => {
 
 /** Who the dashboard is signed in as. `auth: false` means the gate is off (local dev). */
 oauth.get('/auth/me', async (c) => {
-  if (c.env.REQUIRE_AUTH !== 'true') return c.json({ auth: false, user: null });
+  if (!authOn(c.env)) return c.json({ auth: false, user: null });
   const user = await sessionUser(c);
   return c.json({ auth: true, user: user && { email: user.email, name: user.name } });
 });

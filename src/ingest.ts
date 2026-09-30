@@ -9,23 +9,68 @@ const PARAM_CHUNK = 40; // keep bound-parameter counts per statement small
 const isHex = (v: unknown, len: number) =>
   typeof v === 'string' && v.length === len && /^[0-9a-f]+$/.test(v);
 
+/** Past this a file list is not stored; the snapshot's summary still is. */
+const MAX_FILES = 100_000;
+/** Under D1's 2 MB limit on one value, with room to spare. */
+const MAX_BLOB_BYTES = 1_900_000;
+
+const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+const str = (v: unknown, max: number): string | null =>
+  typeof v === 'string' && v.length <= max ? v : null;
+
+/** A file list with every record well-formed, or null. One bad record drops the list, never half of it. */
+function normalizeFiles(v: unknown): WireFile[] | null {
+  if (!Array.isArray(v) || v.length === 0 || v.length > MAX_FILES) return null;
+  const out: WireFile[] = [];
+  for (const f of v) {
+    if (typeof f !== 'object' || f === null) return null;
+    const o = f as Record<string, unknown>;
+    const path_hash = str(o.path_hash, 128);
+    const content_hash = str(o.content_hash, 128);
+    if (!path_hash || !content_hash) return null;
+    // Only the known fields are kept, so whatever else an agent sends is never stored.
+    out.push({ path_hash, content_hash, lines: num(o.lines) ?? 0, bytes: num(o.bytes) ?? 0, mtime: num(o.mtime) ?? 0 });
+  }
+  return out;
+}
+
 /**
- * A malformed record is dropped, not rejected. Any non-2xx makes the agent
- * re-queue the whole batch, so answering 400 to one bad row would wedge that
- * agent into retrying it forever.
+ * A malformed record is dropped, not rejected, and whatever is kept is
+ * rebuilt from checked fields. Any non-2xx makes the agent re-queue the whole
+ * batch, so a 400 — or a 500 from binding a stray object into D1 — would wedge
+ * that agent into retrying it forever.
  */
-function valid(s: unknown): s is WireSnapshot {
-  if (typeof s !== 'object' || s === null) return false;
+function normalize(s: unknown): WireSnapshot | null {
+  if (typeof s !== 'object' || s === null) return null;
   const o = s as Record<string, unknown>;
-  return (
-    typeof o.project === 'string' &&
-    o.project.length > 0 &&
-    o.project.length <= 128 &&
-    Number.isFinite(o.captured_at) &&
-    isHex(o.tree_hash, 64) &&
-    Number.isFinite(o.file_count) &&
-    Number.isFinite(o.total_lines)
-  );
+  const project = str(o.project, 128);
+  const captured_at = num(o.captured_at);
+  const file_count = num(o.file_count);
+  const total_lines = num(o.total_lines);
+  if (!project || captured_at === null || file_count === null || total_lines === null) return null;
+  if (!isHex(o.tree_hash, 64)) return null;
+
+  const g = typeof o.git === 'object' && o.git !== null ? (o.git as Record<string, unknown>) : null;
+  const git = g
+    ? {
+        head: str(g.head, 128) ?? '',
+        branch: str(g.branch, 255) ?? '',
+        dirty: g.dirty === true,
+        ahead: Math.trunc(num(g.ahead) ?? 0),
+      }
+    : undefined;
+
+  return {
+    project,
+    captured_at,
+    tree_hash: o.tree_hash as string,
+    file_count,
+    total_lines,
+    git,
+    files: normalizeFiles(o.files) ?? undefined,
+    unchanged: o.unchanged === true,
+    agent_version: str(o.agent_version, 64) ?? '',
+  };
 }
 
 /** Latest state we know for a project, carried forward as the batch is walked. */
@@ -54,7 +99,10 @@ ingest.post('/v1/snapshots', requireAgentKey, async (c) => {
   const raw = Array.isArray(body) ? body : [body];
   if (raw.length > MAX_BATCH) return c.json({ error: 'batch too large' }, 413);
 
-  const batch = raw.filter(valid).sort((a, b) => a.captured_at - b.captured_at);
+  const batch = raw
+    .map(normalize)
+    .filter((s): s is WireSnapshot => s !== null)
+    .sort((a, b) => a.captured_at - b.captured_at);
   const skipped = raw.length - batch.length;
   if (batch.length === 0) return c.json({ accepted: 0, skipped }, 202);
 
@@ -113,7 +161,11 @@ ingest.post('/v1/snapshots', requireAgentKey, async (c) => {
     // streams at once.
     await Promise.all(
       group.map(async (s) => {
-        const blob = await packTree(s.files as WireFile[]);
+        const packed = await packTree(s.files as WireFile[]);
+        // D1 refuses a value over 2 MB, and one refused INSERT fails the whole
+        // batch. Past the cap the tree is recorded without its list: churn
+        // skips it, and the snapshots that point at it still land.
+        const blob = packed.byteLength <= MAX_BLOB_BYTES ? packed : null;
         treeStmts.push(
           db
             .prepare(
@@ -200,11 +252,11 @@ ingest.post('/v1/snapshots', requireAgentKey, async (c) => {
           removed,
           modified,
           linesDelta,
-          s.git?.head ?? null,
-          s.git?.branch ?? null,
+          s.git?.head || null,
+          s.git?.branch || null,
           s.git ? (s.git.dirty ? 1 : 0) : null,
           s.git?.ahead ?? null,
-          s.agent_version ?? null,
+          s.agent_version || null,
         ),
     );
 

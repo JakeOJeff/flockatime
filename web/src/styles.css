@@ -309,3 +309,7 @@ td.hash {
 @media (prefers-reduced-motion: reduce) {
   .live { animation: none; opacity: 1; }
 }
+
+.muted a {
+  color: inherit;
+}

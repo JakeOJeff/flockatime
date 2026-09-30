@@ -14,7 +14,8 @@ src/          Worker — Hono routes
   ingest.ts     POST /v1/snapshots   (the agent writes here)
   api.ts        GET  /api/*          (the dashboard reads here)
   trees.ts      file-list packing + diffing
-  auth.ts       bearer keys, Access gate
+  auth.ts       bearer keys, dashboard session gate
+  oauth.ts      GET  /auth/*         (Hack Club Auth sign-in)
 migrations/   D1 schema
 web/          Vite + React dashboard, built to web/dist
 scripts/      key minting
@@ -85,14 +86,27 @@ Then set `agent.toml`'s `endpoint` to the deployed URL.
 
 ### Dashboard auth
 
-The ingest route is authenticated by bearer key. The dashboard is not, until you
-put **Cloudflare Access** in front of it and flip `REQUIRE_ACCESS` to `"true"` in
-`wrangler.jsonc` — then `/api/*` refuses anything that did not arrive through
-Access. Leave `/v1/*` out of the Access policy, or the agent will be redirected to
-a login page.
+The ingest route is authenticated by bearer key. The dashboard signs in with
+[Hack Club Auth](https://auth.hackclub.com): `/auth/login` runs the OAuth code
+flow, reads the email from `/oauth/userinfo`, and sets an HMAC-signed session
+cookie for seven days. Only emails in `ALLOWED_EMAILS` get in — an empty list lets
+nobody in, and removing an email locks it out on its next request.
 
-`REQUIRE_ACCESS` defaults to `"false"` so `wrangler dev` works without it. **Do not
-deploy to a public hostname while it is `"false"`.**
+1. Create an app at <https://auth.hackclub.com/developer/apps> with the redirect
+   URI `https://<your-worker>/auth/callback` and scopes `openid email name`.
+2. Put the client ID and your email in `wrangler.jsonc` (`HACKCLUB_CLIENT_ID`,
+   `ALLOWED_EMAILS`).
+3. Set the two secrets:
+   ```bash
+   npx wrangler secret put HACKCLUB_CLIENT_SECRET
+   npx wrangler secret put SESSION_SECRET     # any long random string
+   ```
+4. `npm run deploy`.
+
+`REQUIRE_AUTH` is `"true"` in `wrangler.jsonc` and set to `false` in `.dev.vars`
+so `wrangler dev` works without an OAuth app. To test sign-in locally, add
+`http://127.0.0.1:8787/auth/callback` to the app and put `REQUIRE_AUTH=true` plus
+the three settings above in `.dev.vars`.
 
 ## Known limits
 

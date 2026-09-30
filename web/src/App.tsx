@@ -3,6 +3,7 @@ import {
   clock,
   getChurn,
   getCommits,
+  getMe,
   getSessions,
   getSummary,
   getTimeline,
@@ -35,6 +36,13 @@ export default function App() {
   const [hot, setHot] = useState<ChurnRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<number | null>(null);
+  const [me, setMe] = useState<string | null>(null);
+
+  useEffect(() => {
+    getMe()
+      .then((r) => setMe(r.user ? r.user.name ?? r.user.email : null))
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     listProjects()
@@ -130,6 +138,11 @@ export default function App() {
               : 'waiting for the first snapshot'}
             {lastSync && <span className="live" title="Auto-refreshing every 10s" />}
           </div>
+          {me && (
+            <div className="muted">
+              {me} · <a href="/auth/logout">Sign out</a>
+            </div>
+          )}
         </div>
 
         {/* Filters in one row above the charts. */}

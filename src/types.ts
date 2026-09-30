@@ -3,7 +3,15 @@ export interface Env {
   DB: D1Database;
   ASSETS: Fetcher;
   SESSION_GAP_SECONDS: string;
-  REQUIRE_ACCESS: string;
+  /** "true" in production: /api/* needs a Hack Club Auth session. */
+  REQUIRE_AUTH: string;
+  /** Comma-separated emails allowed into the dashboard. Empty = nobody. */
+  ALLOWED_EMAILS: string;
+  HACKCLUB_CLIENT_ID: string;
+  /** Secret (`wrangler secret put`). */
+  HACKCLUB_CLIENT_SECRET: string;
+  /** Secret (`wrangler secret put`). Signs the session cookie. */
+  SESSION_SECRET: string;
 }
 
 /** One file record as the agent sends it. Path is a hash, never the path. */

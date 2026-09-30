@@ -84,11 +84,20 @@ export interface Summary {
 
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(path, { headers: { accept: 'application/json' } });
+  if (res.status === 401) {
+    // No session (or it expired): hand off to Hack Club Auth.
+    window.location.href = '/auth/login';
+    throw new Error('signing in…');
+  }
   if (!res.ok) throw new Error(`${path} -> ${res.status}`);
   return (await res.json()) as T;
 }
 
-export const listProjects = () => get<{ projects: ProjectRow[] }>('/api/projects');
+/** `auth: false` means the server has sign-in turned off (local dev). */
+export const getMe = () =>
+  get<{ auth: boolean; user: { email: string; name: string | null } | null }>('/auth/me');
+
+export const listProjects =() => get<{ projects: ProjectRow[] }>('/api/projects');
 
 export const getTimeline = (name: string, days: number) =>
   get<{ snapshots: SnapshotRow[] }>(`/api/projects/${encodeURIComponent(name)}/timeline?days=${days}`);

@@ -7,12 +7,12 @@
 
   // The Worker runs first and explicitly falls through to env.ASSETS for
   // anything that is not an API route, so SPA fallback can never swallow
-  // /v1/* or /api/*.
+  // /v1/*, /api/* or /auth/*.
   "assets": {
     "directory": "./web/dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/v1/*", "/api/*", "/healthz"]
+    "run_worker_first": ["/v1/*", "/api/*", "/auth/*", "/healthz"]
   },
 
   "d1_databases": [
@@ -29,8 +29,14 @@
   "vars": {
     // Session clustering: gap in seconds that ends a coding session.
     "SESSION_GAP_SECONDS": "900",
-    // Set to "true" once Cloudflare Access fronts the dashboard, so /api/*
-    // refuses any request that did not come through Access.
-    "REQUIRE_ACCESS": "true"
+    // "true" in production: /api/* needs a Hack Club Auth session.
+    // .dev.vars turns it off for `wrangler dev`.
+    "REQUIRE_AUTH": "true",
+    // Comma-separated emails allowed to sign in to the dashboard. Empty lets
+    // nobody in.
+    "ALLOWED_EMAILS": "",
+    // From auth.hackclub.com/developer/apps. Not secret: the client secret and
+    // SESSION_SECRET are set with `wrangler secret put`.
+    "HACKCLUB_CLIENT_ID": ""
   }
 }

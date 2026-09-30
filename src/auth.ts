@@ -1,4 +1,5 @@
 import type { Context, Next } from 'hono';
+import { getSignedCookie } from 'hono/cookie';
 import type { Env } from './types';
 
 /** sha256 hex. Keys are stored hashed, so a leaked database is not a leaked key. */
@@ -45,15 +46,50 @@ export async function requireAgentKey(c: Context<{ Bindings: Env; Variables: { a
   return next();
 }
 
+export const SESSION_COOKIE = 'fk_session';
+export const SESSION_TTL_SECONDS = 7 * 86400;
+
+export interface SessionUser {
+  email: string;
+  name: string | null;
+  /** Unix seconds. Checked here too, so a replayed cookie dies on time. */
+  exp: number;
+}
+
 /**
- * Dashboard auth. Cloudflare Access terminates in front of the Worker and
- * stamps the identity headers, so there is no session code here to get wrong.
- * Left open while REQUIRE_ACCESS is not "true" so `wrangler dev` works.
+ * The signed-in dashboard user, or null. The cookie is HMAC-signed with
+ * SESSION_SECRET, so its contents can be trusted once the signature checks.
+ */
+export async function sessionUser(c: Context<{ Bindings: Env }>): Promise<SessionUser | null> {
+  if (!c.env.SESSION_SECRET) return null;
+  const raw = await getSignedCookie(c, c.env.SESSION_SECRET, SESSION_COOKIE);
+  if (!raw) return null;
+  try {
+    const user = JSON.parse(raw) as SessionUser;
+    if (typeof user.email !== 'string' || !(user.exp > Date.now() / 1000)) return null;
+    // Re-checked on every request, so removing an email locks it out at once
+    // rather than when its cookie expires.
+    return isAllowed(c.env, user.email) ? user : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Fails closed: an empty ALLOWED_EMAILS lets nobody in. */
+export function isAllowed(env: Env, email: string): boolean {
+  const allowed = (env.ALLOWED_EMAILS ?? '')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  return allowed.includes(email.trim().toLowerCase());
+}
+
+/**
+ * Dashboard auth: a Hack Club Auth session (see oauth.ts). Left open while
+ * REQUIRE_AUTH is not "true" so `wrangler dev` works without an OAuth app.
  */
 export async function requireDashboard(c: Context<{ Bindings: Env }>, next: Next) {
-  if (c.env.REQUIRE_ACCESS !== 'true') return next();
-  if (!c.req.header('Cf-Access-Authenticated-User-Email')) {
-    return c.json({ error: 'not authenticated' }, 403);
-  }
+  if (c.env.REQUIRE_AUTH !== 'true') return next();
+  if (!(await sessionUser(c))) return c.json({ error: 'not authenticated' }, 401);
   return next();
 }

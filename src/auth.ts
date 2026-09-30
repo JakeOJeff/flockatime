@@ -77,13 +77,22 @@ export async function sessionUser(c: Context<{ Bindings: Env }>): Promise<Sessio
   }
 }
 
-/** Fails closed: an empty ALLOWED_EMAILS lets nobody in. */
+/**
+ * ALLOWED_EMAILS holds full addresses and `@domain` entries. A domain entry
+ * matches that exact domain only — `@hackclub.com` does not admit
+ * `x@evil-hackclub.com` or `x@sub.hackclub.com`. Fails closed: an empty list
+ * lets nobody in.
+ */
 export function isAllowed(env: Env, email: string): boolean {
-  const allowed = (env.ALLOWED_EMAILS ?? '')
+  const addr = email.trim().toLowerCase();
+  const at = addr.lastIndexOf('@');
+  if (at <= 0) return false;
+  const domain = addr.slice(at); // includes the "@"
+  return (env.ALLOWED_EMAILS ?? '')
     .split(',')
     .map((e) => e.trim().toLowerCase())
-    .filter(Boolean);
-  return allowed.includes(email.trim().toLowerCase());
+    .filter(Boolean)
+    .some((entry) => (entry.startsWith('@') ? entry === domain : entry === addr));
 }
 
 /**

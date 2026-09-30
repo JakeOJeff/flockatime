@@ -92,8 +92,11 @@ Then set `agent.toml`'s `endpoint` to the deployed URL.
 The ingest route is authenticated by bearer key. The dashboard signs in with
 [Hack Club Auth](https://auth.hackclub.com): `/auth/login` runs the OAuth code
 flow, reads the email from `/oauth/userinfo`, and sets an HMAC-signed session
-cookie for seven days. Only emails in `ALLOWED_EMAILS` get in — an empty list lets
-nobody in, and removing an email locks it out on its next request.
+cookie for seven days. Only emails in `ALLOWED_EMAILS` get in — full addresses, or
+`@domain` entries such as `@hackclub.com` that admit exactly that domain (not its
+subdomains). An empty list lets nobody in, and removing an entry locks it out on
+its next request. Everyone admitted sees the same data and can mint or revoke
+agent keys.
 
 1. Create an app at <https://auth.hackclub.com/developer/apps> with the redirect
    URI `https://<your-worker>/auth/callback` and scopes `openid email name`.

@@ -5,6 +5,10 @@
   "compatibility_date": "2025-08-01",
   "observability": { "enabled": true },
 
+  // Public hostname. The install scripts and the Hack Club Auth redirect are
+  // built from the request origin, so they follow whichever host is used.
+  "routes": [{ "pattern": "flockatime.curiousengine.org", "custom_domain": true }],
+
   // The Worker runs first and explicitly falls through to env.ASSETS for
   // anything that is not an API route, so SPA fallback can never swallow
   // /v1/*, /api/* or /auth/*.

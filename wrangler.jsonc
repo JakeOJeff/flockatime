@@ -31,6 +31,6 @@
     "SESSION_GAP_SECONDS": "900",
     // Set to "true" once Cloudflare Access fronts the dashboard, so /api/*
     // refuses any request that did not come through Access.
-    "REQUIRE_ACCESS": "false"
+    "REQUIRE_ACCESS": "true"
   }
 }

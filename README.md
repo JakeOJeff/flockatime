@@ -17,6 +17,8 @@ src/          Worker — Hono routes
   auth.ts       bearer keys, dashboard session gate
   oauth.ts      GET  /auth/*         (Hack Club Auth sign-in)
   hackatime.ts  GET  /api/hackatime  (Hackatime stats proxy)
+  keys.ts       /api/keys            (mint / list / revoke agent keys)
+  install.ts    GET  /install.ps1, /install.sh  (one-line CLI installers)
 migrations/   D1 schema
 web/          Vite + React dashboard, built to web/dist
 scripts/      key minting
@@ -126,6 +128,25 @@ picks who to ask for in this order:
 
 Hackatime time is account-wide (every project), and the panel matches a
 Hackatime project to the open flockatime project by name.
+
+### Installing the CLI
+
+The dashboard's **Connect the CLI** card mints a key and shows one command:
+
+```
+$env:FLOCKATIME_KEY='flk_...'; irm https://<worker>/install.ps1 | iex        # Windows
+curl -fsSL https://<worker>/install.sh | FLOCKATIME_KEY=flk_... sh           # macOS / Linux
+```
+
+The Worker serves both scripts with its own origin filled in as the endpoint.
+They download the latest [`CLI_REPO`](wrangler.jsonc) release, verify it against
+`SHA256SUMS`, and run `snapshot-agent setup`, which enables the WakaTime debug
+log and starts the agent at login. From then on it follows Hackatime: projects
+appear here as you edit them, with no list to maintain. The scripts need a
+published release in `CLI_REPO` (push a `v*` tag there).
+
+Keys can be revoked from the same card. `scripts/new-key.mjs` still works for
+minting one from the terminal.
 
 ## Known limits
 

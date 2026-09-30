@@ -134,7 +134,7 @@ Hackatime project to the open flockatime project by name.
 
 ### Installing the CLI
 
-The dashboard's **Connect the CLI** card mints a key and shows one command:
+The dashboard's **Extensions** page mints a key and shows one command:
 
 ```
 $env:FLOCKATIME_KEY='flk_...'; irm https://<worker>/install.ps1 | iex        # Windows
@@ -148,7 +148,7 @@ log and starts the agent at login. From then on it follows Hackatime: projects
 appear here as you edit them, with no list to maintain. The scripts need a
 published release in `CLI_REPO` (push a `v*` tag there).
 
-Keys can be revoked from the same card. `scripts/new-key.mjs` still works for
+Keys can be revoked under **Settings**. `scripts/new-key.mjs` still works for
 minting one from the terminal.
 
 ## Known limits

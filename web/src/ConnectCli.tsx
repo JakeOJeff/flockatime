@@ -12,31 +12,19 @@ function installCommand(platform: Platform, token: string): string {
     : `curl -fsSL ${origin}/install.sh | FLOCKATIME_KEY=${token} sh`;
 }
 
+const message = (e: unknown) => (e instanceof SignedOutError ? null : String(e));
+
 /**
  * Mints an agent key and hands back the one-line installer with it baked in.
  * The token exists only in this component's state: it is never stored, so
- * leaving the page loses it — the key list below is how old ones get revoked.
+ * leaving the page loses it — the key list in Settings is how old ones get revoked.
  */
-export function ConnectCli({ intro }: { intro?: boolean }) {
+export function InstallCard({ intro }: { intro?: boolean }) {
   const [platform, setPlatform] = useState<Platform>(guessPlatform);
   const [token, setToken] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [keys, setKeys] = useState<ApiKeyRow[]>([]);
   const [error, setError] = useState<string | null>(null);
-
-  const refresh = () =>
-    listKeys()
-      .then((r) => setKeys(r.keys))
-      .catch(() => undefined);
-
-  useEffect(() => {
-    refresh();
-  }, []);
-
-  const fail = (e: unknown) => {
-    if (!(e instanceof SignedOutError)) setError(String(e));
-  };
 
   const generate = async () => {
     setBusy(true);
@@ -45,30 +33,18 @@ export function ConnectCli({ intro }: { intro?: boolean }) {
     try {
       const label = `${platform === 'windows' ? 'Windows' : 'macOS/Linux'} · ${new Date().toLocaleDateString()}`;
       setToken((await createKey(label)).token);
-      refresh();
     } catch (e) {
-      fail(e);
+      setError(message(e));
     } finally {
       setBusy(false);
     }
   };
 
-  const revoke = async (k: ApiKeyRow) => {
-    if (!confirm(`Revoke "${k.label ?? 'key'}"? Any agent using it stops sending.`)) return;
-    try {
-      await revokeKey(k.id);
-      refresh();
-    } catch (e) {
-      fail(e);
-    }
-  };
-
   const command = token ? installCommand(platform, token) : null;
-  const active = keys.filter((k) => !k.revoked_at);
 
   return (
     <div className="card">
-      <h2>Connect the CLI</h2>
+      <h2>snapshot-agent</h2>
       <p className="sub">
         {intro ? 'Nothing has arrived yet. ' : ''}
         One command installs the agent, links it to this dashboard, and starts it at login. It
@@ -120,9 +96,46 @@ export function ConnectCli({ intro }: { intro?: boolean }) {
       )}
 
       {error && <p className="signin-error">{error}</p>}
+    </div>
+  );
+}
 
+/** Every live agent key, with a way to cut one off. */
+export function KeysCard() {
+  const [keys, setKeys] = useState<ApiKeyRow[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = () =>
+    listKeys()
+      .then((r) => setKeys(r.keys))
+      .catch((e) => setError(message(e)));
+
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  const revoke = async (k: ApiKeyRow) => {
+    if (!confirm(`Revoke "${k.label ?? 'key'}"? Any agent using it stops sending.`)) return;
+    try {
+      await revokeKey(k.id);
+      refresh();
+    } catch (e) {
+      setError(message(e));
+    }
+  };
+
+  const active = (keys ?? []).filter((k) => !k.revoked_at);
+
+  return (
+    <div className="card">
+      <h2>Agent keys</h2>
+      <p className="sub">
+        Each install command mints one. Revoking a key stops that machine's agent from sending.
+      </p>
+      {error && <p className="signin-error">{error}</p>}
+      {keys !== null && active.length === 0 && <div className="empty">No active keys.</div>}
       {active.length > 0 && (
-        <div className="scroll-x keys">
+        <div className="scroll-x">
           <table>
             <thead>
               <tr>

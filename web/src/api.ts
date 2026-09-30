@@ -120,6 +120,9 @@ export type Hackatime =
       streak: number;
       languages: HackatimeSlice[];
       projects: HackatimeSlice[];
+      editors: HackatimeSlice[];
+      operating_systems: HackatimeSlice[];
+      categories: HackatimeSlice[];
       daily: { day: string; seconds: number }[];
       /** Seconds per local hour of day, 0–23. */
       hours: number[];

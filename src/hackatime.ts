@@ -36,6 +36,9 @@ interface HtStats {
     streak?: number;
     languages?: Slice[];
     projects?: Slice[];
+    editors?: Slice[];
+    operating_systems?: Slice[];
+    categories?: Slice[];
   };
 }
 
@@ -70,7 +73,7 @@ hackatime.get('/api/hackatime', async (c) => {
   const base = `${HT}/users/${encodeURIComponent(who)}`;
 
   const [statsRes, spansRes] = await Promise.all([
-    fetch(`${base}/stats?features=languages,projects&${range}`, { headers }),
+    fetch(`${base}/stats?features=languages,projects,editors,operating_systems,categories&${range}`, { headers }),
     fetch(`${base}/heartbeats/spans?${range}`, { headers }),
   ]);
 
@@ -116,6 +119,9 @@ hackatime.get('/api/hackatime', async (c) => {
     streak: stats.streak ?? 0,
     languages: slim(stats.languages),
     projects: slim(stats.projects),
+    editors: slim(stats.editors),
+    operating_systems: slim(stats.operating_systems),
+    categories: slim(stats.categories),
     daily: [...daily.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([day, seconds]) => ({ day, seconds: Math.round(seconds) })),

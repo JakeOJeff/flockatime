@@ -157,7 +157,7 @@ function Shell({ user }: { user: User | null }) {
           />
         )}
         {route.page === 'docs' && <Docs route={route.project} />}
-        {route.page === 'extensions' && <Extensions />}
+        {route.page === 'extensions' && <Extensions focus={route.project} />}
         {route.page === 'settings' && <Settings user={user} ht={ht} />}
       </main>
     </div>

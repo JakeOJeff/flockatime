@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { clock, humanDuration, listProjects, type Hackatime, type ProjectRow } from '../api';
-import type { User } from '../App';
+import { href, type User } from '../App';
 import { KeysCard } from '../ConnectCli';
 import { PageHead, SourceTag } from '../ui';
 import { HT_ERRORS } from './Home';
@@ -102,12 +102,20 @@ function CliStatus() {
               ? `${clock(latest.received_at)} (${latest.name})${
                   lag !== null && lag > 120 ? `, ${humanDuration(lag)} after capture` : ''
                 }`
-              : 'Nothing received yet. Connect a machine below.'}
+              : 'Nothing received yet. Install it on a machine to start.'}
           </dd>
           <dt>Agent version</dt>
           <dd>{versions.length ? versions.join(', ') : '—'}</dd>
         </dl>
       )}
+      <div className="btn-row">
+        <a className="btn-secondary inline" href={href('extensions', 'install')}>
+          Install on a machine
+        </a>
+        <a className="btn-secondary inline ghost" href={href('extensions', 'uninstall')}>
+          Uninstall
+        </a>
+      </div>
     </div>
   );
 }

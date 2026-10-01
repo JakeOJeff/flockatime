@@ -54,6 +54,16 @@ snapshot-agent run
 
 ## Uninstall
 
+To remove snapshot-agent completely, run this. It needs no key, and [Extensions](#/extensions/uninstall) shows the same command with a Copy button:
+
+```sh
+curl -fsSL https://flockatime.curiousengine.org/uninstall.sh | sh
+```
+
+It disables and stops the systemd user service (and any agent started by hand), then deletes the unit file, `~/.flockatime`, `~/.snapshot-agent.toml` and `~/.snapshot-agent-queue.db`. Remove the `PATH` line from `~/.bashrc` if you added one. Snapshots still waiting in the queue are lost. Hackatime, `~/.wakatime.cfg` and everything already on the dashboard are left alone. Then revoke the machine's key in [Settings](#/settings).
+
+### Only stop it starting at login
+
 ```sh
 snapshot-agent uninstall
 ```

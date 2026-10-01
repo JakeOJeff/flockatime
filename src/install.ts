@@ -29,6 +29,8 @@ const text = (body: string) =>
 
 install.get('/install.ps1', (c) => text(fill(PS1, c)));
 install.get('/install.sh', (c) => text(fill(SH, c)));
+install.get('/uninstall.ps1', () => text(UNINSTALL_PS1));
+install.get('/uninstall.sh', () => text(UNINSTALL_SH));
 
 const PS1 = String.raw`# flockatime CLI installer for Windows. Copy the full command from your
 # dashboard's "Connect the CLI" card:
@@ -162,4 +164,75 @@ case ":$PATH:" in
     echo "  export PATH=\"\$HOME/.flockatime/bin:\$PATH\""
     ;;
 esac
+`;
+
+/*
+ * Uninstallers: the inverse of the above plus `setup`. They work from fixed
+ * paths rather than calling the binary, so a half-installed or already-deleted
+ * agent is still cleaned up. ~/.wakatime.cfg is left alone: debug logging is
+ * harmless, and we cannot know whether it was on before setup touched it.
+ */
+const UNINSTALL_PS1 = String.raw`# flockatime CLI uninstaller for Windows:
+#   irm https://<your flockatime>/uninstall.ps1 | iex
+& {
+  $ErrorActionPreference = 'SilentlyContinue'
+  Write-Host 'Removing snapshot-agent ...'
+
+  $startup = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Startup\snapshot-agent.vbs'
+  Remove-Item $startup -Force
+  Get-Process -Name 'snapshot-agent' | Stop-Process -Force
+  Start-Sleep -Milliseconds 500
+
+  $root = Join-Path $HOME '.flockatime'
+  $dir = Join-Path $root 'bin'
+  Remove-Item $root -Recurse -Force
+
+  $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+  if ($userPath -and (($userPath -split ';') -contains $dir)) {
+    $kept = ($userPath -split ';' | Where-Object { $_ -and $_ -ne $dir }) -join ';'
+    [Environment]::SetEnvironmentVariable('Path', $kept, 'User')
+  }
+
+  Remove-Item (Join-Path $HOME '.snapshot-agent.toml') -Force
+  Remove-Item (Join-Path $HOME '.snapshot-agent-queue.db') -Force
+
+  if (Test-Path $root) {
+    Write-Host "Could not remove $root --- close anything using it and run this again." -ForegroundColor Yellow
+  } else {
+    Write-Host 'done. snapshot-agent is stopped and removed from this machine.'
+    Write-Host 'Revoke its key in your flockatime Settings if you are not coming back.'
+  }
+}
+`;
+
+const UNINSTALL_SH = String.raw`#!/bin/sh
+# flockatime CLI uninstaller for macOS and Linux:
+#   curl -fsSL https://<your flockatime>/uninstall.sh | sh
+set -u
+echo "Removing snapshot-agent ..."
+
+case "$(uname -s)" in
+  Darwin)
+    plist="$HOME/Library/LaunchAgents/com.snapshot-agent.plist"
+    [ -f "$plist" ] && launchctl unload -w "$plist" 2>/dev/null
+    rm -f "$plist" "$HOME/Library/Logs/snapshot-agent.log"
+    ;;
+  Linux)
+    if command -v systemctl >/dev/null 2>&1; then
+      systemctl --user disable --now snapshot-agent.service 2>/dev/null
+    fi
+    rm -f "${'$'}{XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/snapshot-agent.service"
+    command -v systemctl >/dev/null 2>&1 && systemctl --user daemon-reload 2>/dev/null
+    ;;
+esac
+
+# An agent started by hand (no systemd, or "snapshot-agent run") outlives the above.
+pkill -x snapshot-agent 2>/dev/null
+
+rm -rf "$HOME/.flockatime"
+rm -f "$HOME/.snapshot-agent.toml" "$HOME/.snapshot-agent-queue.db"
+
+echo "done. snapshot-agent is stopped and removed from this machine."
+echo "Revoke its key in your flockatime Settings if you are not coming back."
+echo "If you added ~/.flockatime/bin to PATH in your shell profile, you can delete that line."
 `;

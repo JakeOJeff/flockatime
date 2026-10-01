@@ -1040,6 +1040,61 @@ tr.row-link.current td:first-child {
   margin: 8px 0 0;
 }
 
+/* Install walkthrough: numbered steps, the command sits inside step 2. */
+.steps {
+  margin: 18px 0 16px;
+  padding-left: 22px;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.steps > li {
+  margin-bottom: 16px;
+  padding-left: 4px;
+}
+
+.steps > li::marker {
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.steps p,
+.steps ul {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+.steps ul {
+  padding-left: 18px;
+}
+
+.steps a,
+.cmd-note a {
+  color: var(--accent);
+}
+
+.steps p code,
+.steps li > code,
+.cmd-note code {
+  font-family: var(--mono);
+  font-size: 12px;
+  background: var(--surface-0);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+.steps kbd {
+  font-family: var(--mono);
+  font-size: 11px;
+  background: var(--surface-0);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 0 5px;
+}
+
 .btn-secondary {
   font: inherit;
   font-weight: 600;
@@ -1074,6 +1129,20 @@ tr.row-link.current td:first-child {
   display: inline-block;
   margin-top: 16px;
   text-decoration: none;
+}
+
+.btn-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* The quieter of two side-by-side actions: outlined, not filled. */
+.btn-secondary.ghost {
+  color: var(--text-primary);
+  background: transparent;
+  border: 1px solid var(--border);
 }
 
 /* Top-X tiles hold names, which can be long: one line, ellipsised. */

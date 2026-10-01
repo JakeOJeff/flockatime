@@ -66,7 +66,7 @@ SNAPSHOT_AGENT_CONFIG=./loop.toml snapshot-agent run
 
 `install` registers the login item for the current config and starts the agent: a hidden Startup item on Windows, a LaunchAgent on macOS, a systemd user unit on Linux. It warns if the config is not usable yet, since the agent would otherwise exit silently at login.
 
-`uninstall` removes it. Config and queue are never touched.
+`uninstall` removes it. Config and queue are never touched. To remove the agent and all its files, use the uninstall command on [Extensions](#/extensions/uninstall).
 
 ## devserver
 

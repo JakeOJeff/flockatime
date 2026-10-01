@@ -1,14 +1,20 @@
-import { InstallCard } from '../ConnectCli';
+import { useEffect } from 'react';
+import { InstallCard, UninstallCard } from '../ConnectCli';
 import { PageHead } from '../ui';
 
-export function Extensions() {
+/** `focus` is the card to scroll to: #/extensions/install or #/extensions/uninstall. */
+export function Extensions({ focus }: { focus?: string | null }) {
+  useEffect(() => {
+    if (focus) document.getElementById(focus)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [focus]);
+
   return (
     <>
       <PageHead eyebrow="Setup" title="Extensions">
         <p className="lede">What feeds this dashboard, and how to install it on the machine you code on.</p>
       </PageHead>
 
-      <InstallCard />
+      <InstallCard id="install" />
 
       <div className="card">
         <h2>Hackatime</h2>
@@ -20,6 +26,8 @@ export function Extensions() {
           Set up Hackatime ↗
         </a>
       </div>
+
+      <UninstallCard id="uninstall" />
     </>
   );
 }

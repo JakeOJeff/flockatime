@@ -50,10 +50,20 @@ Run the install command again. It downloads the latest release, replaces the bin
 
 ## Uninstall
 
+To remove snapshot-agent completely, run this. It needs no key, and [Extensions](#/extensions/uninstall) shows the same command with a Copy button:
+
+```powershell
+irm https://flockatime.curiousengine.org/uninstall.ps1 | iex
+```
+
+It stops the running agent, removes the Startup login item, deletes `%USERPROFILE%.flockatime` and takes it off your `PATH`, and deletes `~/.snapshot-agent.toml` and `~/.snapshot-agent-queue.db`. Snapshots still waiting in the queue are lost. Hackatime, `~/.wakatime.cfg` and everything already on the dashboard are left alone. Then revoke the machine's key in [Settings](#/settings).
+
+### Only stop it starting at login
+
 ```powershell
 snapshot-agent uninstall
 ```
 
-This removes the login item. An agent that is already running keeps going until you log out or end it in Task Manager. Your config and queue are left in place, so reinstalling picks up where you left off. Revoke the key in [Settings](#/settings) if you are done with this machine.
+This removes the login item. An agent that is already running keeps going until you log out or end it in Task Manager. Your config and queue are left in place, so reinstalling picks up where you left off.
 
 > **Tip:** when editing the config by hand, write Windows paths with forward slashes or in 'single quotes'. TOML reads `\U` in a double-quoted string as an escape code.

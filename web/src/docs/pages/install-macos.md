@@ -49,6 +49,16 @@ Run the install command again. The new binary is swapped in by rename, so a runn
 
 ## Uninstall
 
+To remove snapshot-agent completely, run this. It needs no key, and [Extensions](#/extensions/uninstall) shows the same command with a Copy button:
+
+```sh
+curl -fsSL https://flockatime.curiousengine.org/uninstall.sh | sh
+```
+
+It unloads the LaunchAgent and stops the agent, then deletes the plist, the log, `~/.flockatime`, `~/.snapshot-agent.toml` and `~/.snapshot-agent-queue.db`. Remove the `PATH` line from `~/.zshrc` if you added one. Snapshots still waiting in the queue are lost. Hackatime, `~/.wakatime.cfg` and everything already on the dashboard are left alone. Then revoke the machine's key in [Settings](#/settings).
+
+### Only stop it starting at login
+
 ```sh
 snapshot-agent uninstall
 ```

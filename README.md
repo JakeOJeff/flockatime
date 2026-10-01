@@ -115,7 +115,8 @@ included, so their running agents keep working — into their account. Until
 then those agents get a 401 and queue their snapshots, and they flush once the
 owner has signed in.
 
-`ADMIN_EMAILS` (full addresses only) get an Admin page in the sidebar. Its
+`ADMIN_EMAILS` (full addresses, or `@domain` for that exact domain) get an
+Admin page in the sidebar. Its
 "Who can sign in" list adds emails, `@domain` entries and more admins on top of
 `ALLOWED_EMAILS` / `ADMIN_EMAILS` (the `access` table). The two settings stay a
 floor the page cannot remove, and an admin cannot demote or remove themselves,

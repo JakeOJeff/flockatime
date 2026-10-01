@@ -12,7 +12,7 @@ export interface Env {
    * accounts existed, and only they get the HACKATIME_* settings below.
    */
   OWNER_EMAIL?: string;
-  /** Comma-separated emails that get the Admin page. Empty = nobody. */
+  /** Comma-separated emails (or "@domain") that get the Admin page. Empty = nobody. */
   ADMIN_EMAILS?: string;
   HACKCLUB_CLIENT_ID: string;
   /** Secret (`wrangler secret put`). */

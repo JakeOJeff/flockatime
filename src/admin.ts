@@ -399,7 +399,8 @@ admin.get('/api/admin/access', async (c) => {
 });
 
 /**
- * Adds an entry or changes its role. Admin needs a full address. An admin
+ * Adds an entry or changes its role. Admin needs a full address here; only
+ * ADMIN_EMAILS can make a whole domain admin. An admin
  * cannot demote their own entry here, though one in ADMIN_EMAILS keeps admin
  * whatever this table says.
  */
@@ -442,7 +443,13 @@ admin.delete('/api/admin/access/:entry', async (c) => {
 
 /** Whether email stays admin from wrangler.jsonc alone, with its table entry gone. */
 async function stillAdminWithout(env: Env, email: string): Promise<boolean> {
-  return configAccess(env).admins.includes(email);
+  return configAdmin(env, email);
+}
+
+/** Whether ADMIN_EMAILS names email itself or its exact @domain. */
+function configAdmin(env: Env, email: string): boolean {
+  const domain = email.slice(email.lastIndexOf('@'));
+  return configAccess(env).admins.some((e) => e === email || e === domain);
 }
 
 /**
@@ -464,6 +471,6 @@ admin.get('/api/admin/access/check', async (c) => {
     role,
     entry: entry ?? null,
     other: !!viaDomain || cfg.allowed.includes(email) || cfg.allowed.includes(domain),
-    config_admin: cfg.admins.includes(email),
+    config_admin: configAdmin(c.env, email),
   });
 });

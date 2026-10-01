@@ -119,8 +119,9 @@ export type Role = 'user' | 'admin';
  * wrangler.jsonc, a floor the Admin page cannot remove, and the `access` table
  * the Admin page edits. Both hold full addresses and `@domain` entries; a
  * domain entry matches that exact domain only — `@hackclub.com` does not admit
- * `x@evil-hackclub.com` or `x@sub.hackclub.com`. Admin is only ever granted to
- * a full address, so no domain entry can hand it out. Fails closed: with both
+ * `x@evil-hackclub.com` or `x@sub.hackclub.com`. A domain in ADMIN_EMAILS makes
+ * that whole domain admin; in the table, admin only ever goes to a full
+ * address, so the page cannot hand it to a domain. Fails closed: with both
  * empty nobody gets in.
  */
 export async function accessRole(env: Env, email: string): Promise<Role | null> {
@@ -149,7 +150,7 @@ export function roleFor(
   const domain = addr.slice(at); // includes the "@"
   const hit = (e: string) => e === addr || e === domain;
 
-  if (config.admins.includes(addr)) return 'admin';
+  if (config.admins.some(hit)) return 'admin';
   if (entries.some((e) => e.role === 'admin' && e.entry === addr)) return 'admin';
   return config.allowed.some(hit) || entries.some((e) => hit(e.entry)) ? 'user' : null;
 }

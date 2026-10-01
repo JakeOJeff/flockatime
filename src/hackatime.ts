@@ -57,10 +57,21 @@ const slim = (rows: Slice[] | undefined) =>
 
 hackatime.get('/api/hackatime', async (c) => {
   const session = authOn(c.env) ? await sessionUser(c) : null;
-  const owner = !authOn(c.env) || isOwner(c.env, session?.email);
+  // An admin viewing as someone (see requireDashboard) gets that account's
+  // Hackatime, decided by that account's email, never the admin's own.
+  const account = c.get('accountId');
+  const email =
+    session && account !== session.sub
+      ? (
+          await c.env.DB.prepare(`SELECT email FROM accounts WHERE id = ?1`)
+            .bind(account)
+            .first<{ email: string }>()
+        )?.email
+      : session?.email;
+  const owner = !authOn(c.env) || isOwner(c.env, email);
   const key = owner ? c.env.HACKATIME_API_KEY : undefined;
   const user = owner ? c.env.HACKATIME_USER : undefined;
-  const who = key ? 'my' : user || session?.sub;
+  const who = key ? 'my' : user || (session ? account : undefined);
   if (!who) return c.json({ configured: false });
   const source = key ? 'api_key' : user ? 'username' : 'hack_club';
 

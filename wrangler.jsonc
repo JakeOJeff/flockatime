@@ -40,9 +40,14 @@
     // starting with "@" admits that whole domain. Empty lets nobody in.
     "ALLOWED_EMAILS": "realjakeojeff@gmail.com,@hackclub.com",
     // The deployment owner. Their first sign-in claims the data recorded before
-    // accounts existed, and only they get HACKATIME_API_KEY / HACKATIME_USER.
+    // accounts existed, and only they get HACKATIME_API_KEY /  HACKATIME_USER.
     // Everyone else signed in sees only their own keys, devices and projects.
     "OWNER_EMAIL": "realjakeojeff@gmail.com",
+    // Comma-separated emails that get the Admin page: every account's stats,
+    // keys, projects and snapshots, and a "view as" mode for any of them.
+    // Admins can add more users and admins from that page; this list and
+    // ALLOWED_EMAILS are a floor the page cannot remove, so keep yourself here.
+    "ADMIN_EMAILS": "realjakeojeff@gmail.com",
     // From auth.hackclub.com/developer/apps. Not secret: the client secret and
     // SESSION_SECRET are set with `wrangler secret put`.
     "HACKCLUB_CLIENT_ID": "4754299317c020e13a6507782c25d43a",
@@ -54,3 +59,4 @@
     "CLI_REPO": "JakeOJeff/flockatime-cli"
   }
 }
+

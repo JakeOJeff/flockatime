@@ -1155,3 +1155,214 @@ tr.row-link.current td:first-child {
 .tiles.six .value {
   font-size: 22px;
 }
+
+/* ---------- admin ---------- */
+
+/* Shown on every page while an admin views someone else's dashboard. */
+.view-as {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+  padding: 10px 14px;
+  border: 1px solid var(--cat-4);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--cat-4) 12%, var(--surface-1));
+  font-size: 13px;
+}
+
+.input {
+  font: inherit;
+  color: var(--text-primary);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 10px;
+  min-width: 0;
+}
+
+.filters .input {
+  width: min(320px, 100%);
+}
+
+.form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.form-row .input {
+  flex: 1 1 180px;
+}
+
+.form-row .btn-secondary {
+  margin-top: 0;
+}
+
+.pill {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  vertical-align: 1px;
+}
+
+.pill.bad {
+  color: var(--series-2);
+  border: 1px solid currentColor;
+}
+
+.small {
+  font-size: 11.5px;
+}
+
+.mono {
+  font-family: var(--mono);
+  font-size: 12px;
+  word-break: break-all;
+}
+
+tr.dim td {
+  color: var(--text-muted);
+}
+
+td.actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.link-btn.plain {
+  color: var(--accent);
+}
+
+.card.danger {
+  border-color: color-mix(in srgb, var(--series-2) 45%, var(--border));
+}
+
+.btn-secondary.bad {
+  color: #fff;
+  background: var(--series-2);
+}
+
+.pill {
+  color: var(--accent);
+  border: 1px solid currentColor;
+}
+
+.pill.muted-pill {
+  color: var(--text-muted);
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+
+/* The Admin nav link: a moving rainbow outline and rainbow text over a
+   transparent background. The outline is a ::before ring (the gradient masked
+   down to the border width), so nothing has to be painted inside it. The
+   gradient repeats its first colour at the end and is twice the link's width,
+   so sliding it one full width loops seamlessly. */
+.nav a.nav-admin {
+  --rainbow: linear-gradient(
+    90deg,
+    #e5484d,
+    #f76b15,
+    #ffc53d,
+    #30a46c,
+    #0090ff,
+    #8e4ec6,
+    #d6409f,
+    #e5484d
+  );
+  position: relative;
+  margin-top: 6px;
+  background: transparent;
+}
+
+.nav a.nav-admin::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  padding: 1.5px;
+  border-radius: inherit;
+  background: var(--rainbow);
+  background-size: 200% 100%;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  animation: rainbow-slide 4s linear infinite;
+}
+
+.nav a.nav-admin span {
+  font-weight: 600;
+  background: var(--rainbow);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: rainbow-slide 4s linear infinite;
+}
+
+.nav a.nav-admin:hover,
+.nav a.nav-admin[aria-current='page'] {
+  background: transparent;
+}
+
+/* Current page: the outline thickens rather than filling in. */
+.nav a.nav-admin[aria-current='page']::before {
+  padding: 2.5px;
+}
+
+@keyframes rainbow-slide {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav a.nav-admin::before,
+  .nav a.nav-admin span {
+    animation: none;
+  }
+}
+
+@media (max-width: 860px) {
+  .nav a.nav-admin {
+    margin-top: 0;
+  }
+}
+
+@media (forced-colors: active) {
+  .nav a.nav-admin::before {
+    display: none;
+  }
+  .nav a.nav-admin {
+    border: 1px solid LinkText;
+  }
+  .nav a.nav-admin span {
+    color: LinkText;
+  }
+}
+
+.pill.warn {
+  color: var(--cat-4);
+}
+
+.let-in {
+  margin-left: 8px;
+  font-size: 12px;
+}

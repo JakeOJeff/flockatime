@@ -19,6 +19,7 @@ src/          Worker — Hono routes
   hackatime.ts  GET  /api/hackatime  (Hackatime stats proxy)
   keys.ts       /api/keys            (mint / list / revoke agent keys)
   install.ts    GET  /install.ps1, /install.sh  (one-line CLI installers)
+  admin.ts      /api/admin/*         (every account, for ADMIN_EMAILS)
 migrations/   D1 schema
 web/          Vite + React dashboard, built to web/dist
   src/docs/     the Docs page: one Markdown file per page in pages/,
@@ -113,6 +114,21 @@ under `account_id = 'local'`, and the owner's first sign-in moves it — keys
 included, so their running agents keep working — into their account. Until
 then those agents get a 401 and queue their snapshots, and they flush once the
 owner has signed in.
+
+`ADMIN_EMAILS` (full addresses only) get an Admin page in the sidebar. Its
+"Who can sign in" list adds emails, `@domain` entries and more admins on top of
+`ALLOWED_EMAILS` / `ADMIN_EMAILS` (the `access` table). The two settings stay a
+floor the page cannot remove, and an admin cannot demote or remove themselves,
+so the page can never lock every admin out. It lists every account, including ids that own data
+but never signed in, such as `local`. For any account an admin can inspect its
+totals, projects, keys and raw snapshot log. They can mint, rename, revoke,
+restore or delete keys; rename, move or delete projects; delete snapshots; and
+add, edit, disable or delete accounts. A disabled account is refused at
+sign-in, on every dashboard request and at ingest. Deleting an account does
+not keep the person out, because they can sign in again into an empty account.
+"View dashboard as them" sends an `x-flockatime-as` header, so every ordinary
+page shows that account's data (and acts on it). The server ignores that
+header from anyone who is not an admin.
 
 1. Create an app at <https://auth.hackclub.com/developer/apps> with the redirect
    URI `https://<your-worker>/auth/callback` and scopes `openid email name`.

@@ -140,8 +140,43 @@ export const setSignedOutHandler = (fn: () => void) => {
   onSignedOut = fn;
 };
 
+/**
+ * The account an admin is viewing the dashboard as, or null for their own.
+ * Sent as a header on every non-admin call; the server ignores it from anyone
+ * who is not an admin. Kept for the tab, so a reload stays on the same user.
+ */
+const VIEW_AS_KEY = 'fk_view_as';
+export interface ViewAs {
+  id: string;
+  name: string | null;
+  email: string | null;
+}
+let viewAs: ViewAs | null = (() => {
+  try {
+    return JSON.parse(sessionStorage.getItem(VIEW_AS_KEY) ?? 'null') as ViewAs | null;
+  } catch {
+    return null;
+  }
+})();
+export const getViewAs = () => viewAs;
+export function setViewAs(v: ViewAs | null) {
+  viewAs = v;
+  try {
+    if (v) sessionStorage.setItem(VIEW_AS_KEY, JSON.stringify(v));
+    else sessionStorage.removeItem(VIEW_AS_KEY);
+  } catch {
+    // Only lost on reload.
+  }
+}
+
+function headers(path: string, extra: Record<string, string>): Record<string, string> {
+  const h: Record<string, string> = { accept: 'application/json', ...extra };
+  if (viewAs && !path.startsWith('/api/admin')) h['x-flockatime-as'] = viewAs.id;
+  return h;
+}
+
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(path, { headers: { accept: 'application/json' } });
+  const res = await fetch(path, { headers: headers(path, {}) });
   if (res.status === 401) {
     onSignedOut();
     throw new SignedOutError('signed out');
@@ -152,7 +187,7 @@ async function get<T>(path: string): Promise<T> {
 
 /** `auth: false` means the server has sign-in turned off (local dev). */
 export const getMe = () =>
-  get<{ auth: boolean; user: { email: string; name: string | null } | null }>('/auth/me');
+  get<{ auth: boolean; user: { email: string; name: string | null } | null; admin?: boolean }>('/auth/me');
 
 export const listProjects = () => get<{ projects: ProjectRow[] }>('/api/projects');
 
@@ -245,21 +280,159 @@ export interface ApiKeyRow {
 
 export const listKeys = () => get<{ keys: ApiKeyRow[] }>('/api/keys');
 
-async function send<T>(method: 'POST' | 'DELETE', path: string, body: unknown): Promise<T> {
+async function send<T>(method: 'POST' | 'PATCH' | 'DELETE', path: string, body: unknown): Promise<T> {
   // JSON on purpose: the server refuses writes without it (CSRF guard).
   const res = await fetch(path, {
     method,
-    headers: { 'content-type': 'application/json', accept: 'application/json' },
+    headers: headers(path, { 'content-type': 'application/json' }),
     body: JSON.stringify(body),
   });
   if (res.status === 401) {
     onSignedOut();
     throw new SignedOutError('signed out');
   }
-  if (!res.ok) throw new Error(`${path} -> ${res.status}`);
+  if (!res.ok) {
+    // Admin routes explain refusals ("that account already has…"); say so.
+    const msg = await res
+      .json()
+      .then((j) => (j as { error?: string }).error)
+      .catch(() => undefined);
+    throw new Error(msg ?? `${path} -> ${res.status}`);
+  }
   return (await res.json()) as T;
 }
 
 export const createKey = (label: string) => send<{ token: string }>('POST', '/api/keys', { label });
 
 export const revokeKey = (id: string) => send<{ ok: true }>('DELETE', `/api/keys/${id}`, {});
+
+/* ---------- admin ---------- */
+
+export interface AdminOverview {
+  accounts: number;
+  disabled: number;
+  projects: number;
+  snapshots: number;
+  snapshots_24h: number;
+  active_24h: number;
+  active_keys: number;
+  trees: number;
+  stored_bytes: number;
+}
+
+export interface AdminUserRow {
+  id: string;
+  email: string | null;
+  name: string | null;
+  created_at: number | null;
+  last_login: number | null;
+  disabled_at: number | null;
+  projects: number;
+  snapshots: number;
+  last_received: number | null;
+  active_keys: number;
+  /** What this email may do right now; null = cannot sign in. */
+  role: Role | null;
+  last_key_use: number | null;
+}
+
+export interface AdminProjectRow {
+  name: string;
+  created_at: number;
+  snapshots: number;
+  captured_at: number | null;
+  received_at: number | null;
+  file_count: number | null;
+  total_lines: number | null;
+  git_branch: string | null;
+  git_head: string | null;
+  git_dirty: number | null;
+  agent_version: string | null;
+}
+
+export interface AdminUser {
+  id: string;
+  account: {
+    id: string;
+    email: string;
+    name: string | null;
+    created_at: number;
+    last_login: number;
+    disabled_at: number | null;
+  } | null;
+  totals: {
+    snapshots: number;
+    active_snapshots: number | null;
+    snapshots_7d: number | null;
+    lines_added: number | null;
+    lines_removed: number | null;
+    first_seen: number | null;
+    last_received: number | null;
+    trees: number;
+    stored_bytes: number;
+  } | null;
+  projects: AdminProjectRow[];
+  keys: ApiKeyRow[];
+}
+
+export interface AdminSnapshotRow extends SnapshotRow {
+  id: number;
+  project: string;
+  tree_hash: string;
+  agent_version: string | null;
+}
+
+const enc = encodeURIComponent;
+const user = (id: string) => `/api/admin/users/${enc(id)}`;
+
+export const admin = {
+  overview: () => get<AdminOverview>('/api/admin/overview'),
+  users: () => get<{ users: AdminUserRow[] }>('/api/admin/users'),
+  user: (id: string) => get<AdminUser>(user(id)),
+  snapshots: (id: string, opts: { project?: string; before?: number; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (opts.project) q.set('project', opts.project);
+    if (opts.before) q.set('before', String(opts.before));
+    if (opts.limit) q.set('limit', String(opts.limit));
+    return get<{ snapshots: AdminSnapshotRow[]; more: boolean }>(`${user(id)}/snapshots?${q}`);
+  },
+  createUser: (b: { id?: string; email: string; name?: string }) => send<{ id: string }>('POST', '/api/admin/users', b),
+  updateUser: (id: string, b: { email?: string; name?: string; disabled?: boolean }) =>
+    send<{ ok: true }>('PATCH', user(id), b),
+  deleteUser: (id: string) => send<{ ok: true }>('DELETE', user(id), {}),
+  mintKey: (id: string, label: string) => send<{ token: string }>('POST', `${user(id)}/keys`, { label }),
+  updateKey: (key: string, b: { label?: string; revoked?: boolean }) =>
+    send<{ ok: true }>('PATCH', `/api/admin/keys/${enc(key)}`, b),
+  deleteKey: (key: string) => send<{ ok: true }>('DELETE', `/api/admin/keys/${enc(key)}`, {}),
+  updateProject: (id: string, name: string, b: { name?: string; to?: string }) =>
+    send<{ ok: true }>('PATCH', `${user(id)}/projects/${enc(name)}`, b),
+  deleteProject: (id: string, name: string) => send<{ ok: true }>('DELETE', `${user(id)}/projects/${enc(name)}`, {}),
+  deleteSnapshot: (sid: number) => send<{ ok: true }>('DELETE', `/api/admin/snapshots/${sid}`, {}),
+};
+
+export const bytes = (n: number | null | undefined) => {
+  const v = n ?? 0;
+  if (v < 1024) return `${v} B`;
+  if (v < 1024 ** 2) return `${(v / 1024).toFixed(1)} KB`;
+  if (v < 1024 ** 3) return `${(v / 1024 ** 2).toFixed(1)} MB`;
+  return `${(v / 1024 ** 3).toFixed(2)} GB`;
+};
+
+export type Role = 'user' | 'admin';
+
+export interface AccessRow {
+  entry: string;
+  role: Role;
+  added_by: string | null;
+  created_at: number;
+}
+
+export const access = {
+  list: () => get<{ entries: AccessRow[]; config: { allowed: string[]; admins: string[] } }>('/api/admin/access'),
+  check: (email: string) =>
+    get<{ role: Role | null; entry: { entry: string; role: Role } | null; other: boolean; config_admin?: boolean }>(
+      `/api/admin/access/check?email=${enc(email)}`,
+    ),
+  set: (entry: string, role: Role) => send<{ ok: true }>('POST', '/api/admin/access', { entry, role }),
+  remove: (entry: string) => send<{ ok: true }>('DELETE', `/api/admin/access/${enc(entry)}`, {}),
+};

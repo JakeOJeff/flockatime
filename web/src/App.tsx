@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { getHackatime, getMe, setSignedOutHandler, type Hackatime } from './api';
+import { getHackatime, getMe, getViewAs, setSignedOutHandler, setViewAs, type Hackatime, type ViewAs } from './api';
 import { LoggedOut } from './LoggedOut';
 import { Home } from './pages/Home';
 import { Projects } from './pages/Projects';
 import { Docs } from './pages/Docs';
 import { Extensions } from './pages/Extensions';
 import { Settings } from './pages/Settings';
+import { Admin } from './pages/Admin';
 import type { Source } from './ui';
 
 export interface User {
@@ -13,7 +14,7 @@ export interface User {
   email: string;
 }
 
-type Auth = { state: 'loading' } | { state: 'out' } | { state: 'in'; user: User | null };
+type Auth = { state: 'loading' } | { state: 'out' } | { state: 'in'; user: User | null; admin: boolean };
 
 /**
  * The sign-in gate. Nothing but the logged-out screen renders without a
@@ -28,13 +29,17 @@ export default function App() {
     if (reason) history.replaceState(null, '', location.pathname + location.hash);
     setSignedOutHandler(() => setAuth({ state: 'out' }));
     getMe()
-      .then((r) => setAuth(r.auth && !r.user ? { state: 'out' } : { state: 'in', user: r.user }))
+      .then((r) => {
+        // A view-as left over in this tab means nothing to a non-admin.
+        if (!r.admin) setViewAs(null);
+        setAuth(r.auth && !r.user ? { state: 'out' } : { state: 'in', user: r.user, admin: !!r.admin });
+      })
       .catch(() => setAuth({ state: 'out' }));
   }, [reason]);
 
   if (auth.state === 'loading') return null;
   if (auth.state === 'out') return <LoggedOut reason={reason} />;
-  return <Shell user={auth.user} />;
+  return <Shell user={auth.user} admin={auth.admin} />;
 }
 
 const NAV = [
@@ -43,13 +48,14 @@ const NAV = [
   { page: 'docs', label: 'Docs' },
   { page: 'extensions', label: 'Extensions' },
   { page: 'settings', label: 'Settings' },
+  { page: 'admin', label: 'Admin Panel', admin: true },
 ] as const;
 
 export type Page = (typeof NAV)[number]['page'];
 
 /**
  * `#/projects/<name>` → { page: 'projects', project: name }. Unknown pages land on home.
- * Docs reuse the second segment for `<slug>#<anchor>`.
+ * Docs reuse the second segment for `<slug>#<anchor>`, and Admin for an account id.
  */
 function parseHash(hash: string): { page: Page; project: string | null } {
   const [page, project] = hash.replace(/^#\/?/, '').split('/');
@@ -71,7 +77,10 @@ function readSource(): Source {
   }
 }
 
-function Shell({ user }: { user: User | null }) {
+/** Switches the dashboard to another account's data (admins only), or back with null. */
+export type ViewAsFn = (v: ViewAs | null, page?: Page, project?: string) => void;
+
+function Shell({ user, admin }: { user: User | null; admin: boolean }) {
   const [route, setRoute] = useState(() => parseHash(location.hash));
   const [days, setDays] = useState(7);
   const [source, setSourceState] = useState<Source>(readSource);
@@ -84,6 +93,15 @@ function Shell({ user }: { user: User | null }) {
     }
   };
   const [ht, setHt] = useState<Hackatime | null>(null);
+  const [viewAs, setViewAsState] = useState<ViewAs | null>(() => (admin ? getViewAs() : null));
+
+  // Leaving view-as goes back to that account's admin page.
+  const viewAsAccount: ViewAsFn = (v, page = v ? 'home' : 'admin', project) => {
+    const back = viewAs?.id;
+    setViewAs(v);
+    setViewAsState(v);
+    location.hash = href(page, project ?? (v ? undefined : back));
+  };
 
   useEffect(() => {
     const onHash = () => {
@@ -105,9 +123,12 @@ function Shell({ user }: { user: User | null }) {
     return () => {
       live = false;
     };
-  }, [days]);
+  }, [days, viewAs?.id]);
 
   const display = user ? user.name ?? user.email.split('@')[0] : 'Local dev';
+  // The pages talk about whoever's data they show.
+  const shown: User | null = viewAs ? { name: viewAs.name, email: viewAs.email ?? viewAs.id } : user;
+  const page = route.page === 'admin' && !admin ? 'home' : route.page;
 
   return (
     <div className="shell">
@@ -134,9 +155,14 @@ function Shell({ user }: { user: User | null }) {
         )}
 
         <nav className="nav" aria-label="Main">
-          {NAV.map((n) => (
-            <a key={n.page} href={href(n.page)} aria-current={route.page === n.page ? 'page' : undefined}>
-              {n.label}
+          {NAV.filter((n) => admin || !('admin' in n)).map((n) => (
+            <a
+              key={n.page}
+              href={href(n.page)}
+              aria-current={page === n.page ? 'page' : undefined}
+              className={'admin' in n ? 'nav-admin' : undefined}
+            >
+              {'admin' in n ? <span>{n.label}</span> : n.label}
             </a>
           ))}
         </nav>
@@ -144,9 +170,23 @@ function Shell({ user }: { user: User | null }) {
         <div className="brand">flockatime</div>
       </aside>
 
-      <main className={route.page === 'docs' ? 'main wide' : 'main'}>
-        {route.page === 'home' && <Home user={user} days={days} setDays={setDays} ht={ht} source={source} setSource={setSource} />}
-        {route.page === 'projects' && (
+      <main className={page === 'docs' || page === 'admin' ? 'main wide' : 'main'} key={viewAs?.id ?? 'self'}>
+        {viewAs && page !== 'admin' && (
+          <div className="view-as" role="status">
+            <span>
+              Viewing as <strong>{viewAs.name ?? viewAs.email ?? viewAs.id}</strong>
+              {viewAs.name && viewAs.email ? ` · ${viewAs.email}` : ''}. Anything you change here changes
+              their account.
+            </span>
+            <button className="chip" onClick={() => viewAsAccount(null)}>
+              Back to admin
+            </button>
+          </div>
+        )}
+        {page === 'home' && (
+          <Home user={shown} days={days} setDays={setDays} ht={ht} source={source} setSource={setSource} />
+        )}
+        {page === 'projects' && (
           <Projects
             project={route.project}
             days={days}
@@ -156,9 +196,10 @@ function Shell({ user }: { user: User | null }) {
             setSource={setSource}
           />
         )}
-        {route.page === 'docs' && <Docs route={route.project} />}
-        {route.page === 'extensions' && <Extensions focus={route.project} />}
-        {route.page === 'settings' && <Settings user={user} ht={ht} />}
+        {page === 'docs' && <Docs route={route.project} />}
+        {page === 'extensions' && <Extensions focus={route.project} />}
+        {page === 'settings' && <Settings user={shown} ht={ht} />}
+        {page === 'admin' && <Admin account={route.project} viewAs={viewAs} onViewAs={viewAsAccount} />}
       </main>
     </div>
   );

@@ -12,6 +12,8 @@ export interface Env {
    * accounts existed, and only they get the HACKATIME_* settings below.
    */
   OWNER_EMAIL?: string;
+  /** Comma-separated emails that get the Admin page. Empty = nobody. */
+  ADMIN_EMAILS?: string;
   HACKCLUB_CLIENT_ID: string;
   /** Secret (`wrangler secret put`). */
   HACKCLUB_CLIENT_SECRET: string;
@@ -27,8 +29,9 @@ export interface Env {
 
 /**
  * Hono environment for every route that acts for an account. `accountId` is
- * set by requireDashboard (from the session) or requireAgentKey (from the key),
- * and every query that touches user data is scoped by it.
+ * set by requireDashboard (from the session, or the account an admin is
+ * viewing as) or requireAgentKey (from the key), and every query that touches
+ * user data is scoped by it.
  */
 export type AppEnv = { Bindings: Env; Variables: { accountId: string } };
 

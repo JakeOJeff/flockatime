@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import type { AppEnv } from './types';
+import type { AppEnv, Env } from './types';
 import { requireDashboard, sha256 } from './auth';
 
 /**
@@ -21,7 +21,7 @@ keys.use('/api/keys/*', requireDashboard);
 /** One per machine is the norm; this only stops a runaway loop filling the table. */
 const MAX_ACTIVE_KEYS = 50;
 
-const isJson =(ct: string | undefined) => (ct ?? '').toLowerCase().startsWith('application/json');
+export const isJson = (ct: string | undefined) => (ct ?? '').toLowerCase().startsWith('application/json');
 
 keys.get('/api/keys', async (c) => {
   const { results } = await c.env.DB.prepare(
@@ -48,20 +48,22 @@ keys.post('/api/keys', async (c) => {
     return c.json({ error: `at most ${MAX_ACTIVE_KEYS} active keys; revoke one first` }, 409);
   }
 
+  // The only time the token exists outside the machine it is installed on.
+  return c.json({ token: await mintKey(c.env, c.get('accountId'), label || 'cli') }, 201);
+});
+
+/** Stores a new key for account and returns the token, which is never stored. */
+export async function mintKey(env: Env, account: string, label: string): Promise<string> {
   const bytes = crypto.getRandomValues(new Uint8Array(24));
   const token =
     'flk_' + btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-  const now = Math.floor(Date.now() / 1000);
-
-  await c.env.DB.prepare(
+  await env.DB.prepare(
     `INSERT INTO api_keys (key_hash, account_id, label, created_at) VALUES (?1, ?2, ?3, ?4)`,
   )
-    .bind(await sha256(token), c.get('accountId'), label || 'cli', now)
+    .bind(await sha256(token), account, label, Math.floor(Date.now() / 1000))
     .run();
-
-  // The only time the token exists outside the machine it is installed on.
-  return c.json({ token }, 201);
-});
+  return token;
+}
 
 keys.delete('/api/keys/:id', async (c) => {
   if (!isJson(c.req.header('content-type'))) return c.json({ error: 'expected JSON' }, 415);

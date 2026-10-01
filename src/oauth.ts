@@ -116,11 +116,18 @@ oauth.get('/auth/callback', async (c) => {
   // sub is the account id every row is filed under; without it there is no
   // account to open.
   if (!info.sub) return failed(c, 'failed');
-  if (!isAllowed(c.env, info.email)) {
-    return failed(c, 'not_allowed');
-  }
 
-  await recordAccount(c.env, info.sub, info.email, info.name ?? null);
+  // Not on the list, or switched off by an admin (see admin.ts).
+  const existing = await c.env.DB.prepare(`SELECT disabled_at FROM accounts WHERE id = ?1`)
+    .bind(info.sub)
+    .first<{ disabled_at: number | null }>();
+  const allowed = (await isAllowed(c.env, info.email)) && !existing?.disabled_at;
+
+  // Recorded either way, so everyone who signs in shows up on the Admin page,
+  // where someone turned away can be let in. A row grants nothing by itself:
+  // sign-in, the dashboard and ingest all check the access list.
+  await recordAccount(c.env, info.sub, info.email, info.name ?? null, allowed);
+  if (!allowed) return failed(c, 'not_allowed');
 
   const user: SessionUser = {
     email: info.email,
@@ -140,14 +147,15 @@ oauth.get('/auth/callback', async (c) => {
 
 /**
  * Upserts the account row, which is what lets an agent key keep working: ingest
- * checks the key's account email against the allowlist.
+ * checks the key's account email against the allowlist. last_login is the last
+ * sign-in attempt, let in or not.
  *
- * The owner's sign-in also claims everything recorded before accounts existed,
- * which sits under DEV_ACCOUNT. Every later sign-in finds nothing left to move.
- * OR IGNORE, so a name clash can never block a login; the clashing row is
- * simply left where it was.
+ * The owner's sign-in, when let in, also claims everything recorded before
+ * accounts existed, which sits under DEV_ACCOUNT. Every later sign-in finds
+ * nothing left to move. OR IGNORE, so a name clash can never block a login;
+ * the clashing row is simply left where it was.
  */
-async function recordAccount(env: Env, sub: string, email: string, name: string | null) {
+async function recordAccount(env: Env, sub: string, email: string, name: string | null, allowed: boolean) {
   const now = Math.floor(Date.now() / 1000);
   const stmts = [
     env.DB.prepare(
@@ -155,7 +163,7 @@ async function recordAccount(env: Env, sub: string, email: string, name: string 
        ON CONFLICT (id) DO UPDATE SET email = ?2, name = ?3, last_login = ?4`,
     ).bind(sub, email, name, now),
   ];
-  if (isOwner(env, email)) {
+  if (allowed && isOwner(env, email)) {
     for (const table of ['api_keys', 'projects', 'trees']) {
       stmts.push(
         env.DB.prepare(`UPDATE OR IGNORE ${table} SET account_id = ?1 WHERE account_id = ?2`).bind(
@@ -173,9 +181,17 @@ oauth.get('/auth/logout', (c) => {
   return c.redirect('/');
 });
 
-/** Who the dashboard is signed in as. `auth: false` means the gate is off (local dev). */
+/**
+ * Who the dashboard is signed in as. `auth: false` means the gate is off (local
+ * dev). `admin` only decides whether the Admin page is shown; every admin route
+ * checks again on its own.
+ */
 oauth.get('/auth/me', async (c) => {
-  if (!authOn(c.env)) return c.json({ auth: false, user: null });
+  if (!authOn(c.env)) return c.json({ auth: false, user: null, admin: true });
   const user = await sessionUser(c);
-  return c.json({ auth: true, user: user && { email: user.email, name: user.name } });
+  return c.json({
+    auth: true,
+    user: user && { email: user.email, name: user.name },
+    admin: !!user?.admin,
+  });
 });

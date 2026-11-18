@@ -20,12 +20,27 @@ The body is **always an array** of snapshots, oldest first. A bare object is tol
     "tree_hash": "f397336f865d…",
     "file_count": 28,
     "total_lines": 3800,
-    "git": { "head": "eb4cf53b…", "branch": "main", "dirty": false, "ahead": 0 },
+    "total_bytes": 120578,
+    "skipped_files": 0,
+    "git": {
+      "head": "eb4cf53b…", "branch": "main", "dirty": true, "ahead": 0, "behind": 0,
+      "staged": 0, "modified": 4, "untracked": 1, "conflicted": 0,
+      "insertions": 222, "deletions": 33, "commits": 27, "last_commit_at": 1788370000, "stashes": 0
+    },
     "files": [
-      { "path_hash": "618cd5b8…", "content_hash": "52d9604e…", "lines": 10, "bytes": 298, "mtime": 1787687549 }
+      { "path_hash": "618cd5b8…", "content_hash": "52d9604e…", "lines": 10, "bytes": 298, "mtime": 1787687549,
+        "added": 6, "removed": 1, "tail": 6, "mid": 1, "fp": [301247718934, 902811256601] }
     ],
     "unchanged": false,
-    "agent_version": "0.2.0"
+    "capture_ms": 41,
+    "os": "windows",
+    "arch": "amd64",
+    "agent_version": "0.3.0",
+    "seq": 42,
+    "prev": "a91c03d7e2b4…",
+    "saves": [14, 31, 33, 95],
+    "build_at": 1788371800,
+    "test_at": 1788371500
   }
 ]
 ```
@@ -39,12 +54,19 @@ The body is **always an array** of snapshots, oldest first. A bare object is tol
 | `tree_hash` | string | Yes | 64 lowercase hex characters |
 | `file_count` | number | Yes | |
 | `total_lines` | number | Yes | |
-| `git` | object | No | `head`, `branch`, `dirty`, `ahead` |
+| `total_bytes`, `skipped_files`, `capture_ms` | number | No | Repo size, files over 2 MB or unreadable, capture time |
+| `os`, `arch` | string | No | Platform |
+| `git` | object | No | `head`, `branch`, `dirty`, `ahead`, and counts: `behind`, `staged`, `modified`, `untracked`, `conflicted`, `insertions`, `deletions`, `commits`, `last_commit_at`, `stashes` |
 | `files` | array | No | Omitted or empty when unchanged |
 | `unchanged` | boolean | No | Tree hash matches the previous snapshot |
 | `agent_version` | string | No | |
+| `seq`, `prev` | number, string | No | Chain position, and the previous snapshot's `tree_hash` |
+| `saves` | number[] | No | Seconds after the previous capture at which a file was saved |
+| `build_at`, `test_at` | number | No | Last touch of build output and test caches |
 
-Each file record needs `path_hash` and `content_hash`; `lines`, `bytes` and `mtime` default to 0. Any other field is discarded, never stored.
+Each file record needs `path_hash` and `content_hash`; `lines`, `bytes` and `mtime` default to 0. `added`, `removed`, `tail` and `mid` are stored per snapshot in `file_edits`, and `fp` (at most 64 integers below 2⁵³) as the file's latest fingerprints. The stored file list keeps only the first five fields. Any other field is discarded, never stored.
+
+The server checks `seq` / `prev` against the snapshot stored before each one and records `ok`, `start`, `gap`, `fork` or `restart`.
 
 ## Responses
 

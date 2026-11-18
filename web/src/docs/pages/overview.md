@@ -8,6 +8,7 @@ Get the agent running on your machine, learn to read the dashboard, or run your 
 rocket | Quick start | Set up flockatime in a few minutes. | quick-start
 terminal | Install the CLI | One command on Windows, macOS or Linux. | install-windows
 sliders | Configuration | Tune the agent's interval, projects and queue. | cli-config
+code | What the agent records | Line diffs, saves, the history chain and fingerprints. | cli-signals
 chart | Reading the dashboard | What every tile and chart means. | dashboard-projects
 server | Self-hosting | Run flockatime on your own Cloudflare account. | self-host
 lifebuoy | Troubleshooting | Solve common setup problems. | troubleshooting
@@ -29,8 +30,8 @@ Hackatime is the only prerequisite. The agent follows it, so there is no project
 |---|---|---|
 | Measures | Time in your editor | The project tree itself |
 | Comes from | Editor plugins, via hackatime.hackclub.com | The CLI on your machine, sent to this server |
-| Powers | Home: time, languages, editors, OS | Projects: lines, churn, sessions, commits |
-| Sees | Heartbeats (file, language, editor) | Line counts and hashes, never contents or names |
+| Powers | Home: time, languages, editors, OS | Projects: lines, churn, saves, working tree, commits, shared code |
+| Sees | Heartbeats (file, language, editor) | Counts, hashes and fingerprints, never contents or names |
 
 Read [How it works](#/docs/how-it-works) for the full picture, or [Privacy](#/docs/privacy) for exactly what leaves your machine.
 

@@ -25,6 +25,8 @@ source = "wakatime"
 | `api_key` | required | Sent as `Authorization: Bearer <key>` |
 | `interval_seconds` | `300` (`120` after `setup`) | Seconds between captures |
 | `queue_path` | `~/.snapshot-agent-queue.db` | Where unsent snapshots wait |
+| `auto_update` | `true` | `false` pins the installed version. `SNAPSHOT_AGENT_NO_UPDATE=1` does the same |
+| `path_salt` | generated | 32+ hex characters that key the path hashes. See [Path salt](#path-salt) |
 | `activity.source` | none | `"wakatime"` to follow your editor |
 | `activity.idle_multiplier` | `2` | Quiet intervals before going dormant |
 | `[[project]]` | | Fixed projects to capture, each with `name` and `path` |
@@ -62,12 +64,37 @@ With `source = "wakatime"`, `[[project]]` entries are optional and are captured 
 
 A project is named the way Hackatime names it: the contents of a `.wakatime-project` file in the repository root if there is one, otherwise the folder name. Keep the names identical so the dashboard can match a project to its [Hackatime time](#/docs/hackatime).
 
+## Path salt
+
+File names leave your machine as HMAC-SHA256 hashes keyed with a secret salt. Without `path_salt`, the agent generates a random one once and keeps it in `~/.flockatime/path-salt`.
+
+Set the same `path_salt` on several machines if you want their path hashes to line up, for example so a file's history continues when you switch laptops:
+
+```toml
+path_salt = "5f0c...32 or more hex characters..."
+```
+
+Changing the salt changes every path and tree hash. The next snapshot is a quiet baseline with no line counts, and the chain carries on.
+
+## Files the agent keeps
+
+| Path | Holds |
+|---|---|
+| `~/.flockatime/path-salt` | The generated path salt |
+| `~/.flockatime/state/<project>.bin` | Per-line hashes and the chain head, per project. Never sent |
+| `~/.flockatime/status.json` | Counts and times from the running agent, for `doctor` |
+| `~/.flockatime/bin` | The installed binary |
+
+Deleting a state file costs line counts for one capture and restarts that project's chain at 1. Nothing else is lost.
+
 ## Capture rules
 
 These are fixed:
 
 - `.gitignore` is respected.
-- `.git/`, `node_modules/`, `target/`, `dist/` and `vendor/` are always skipped.
-- Files over 2 MB are skipped.
+- `.git` folders and files, `node_modules/`, `target/`, `dist/` and `vendor/` are always skipped.
+- Files over 2 MB are skipped and counted in `skipped_files`.
+- Build output and test caches are never walked; only their top-level modified time is read.
+- A snapshot is kept under 1 MB by dropping fingerprints, least-changed files first. The file list is never cut.
 
 After editing the config, run `snapshot-agent doctor` to check it. The agent reads its config when it starts, so log out and back in (or run the install command again) for the change to take effect.

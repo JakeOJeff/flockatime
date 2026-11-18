@@ -6,7 +6,7 @@ Most problems are one of a handful. Start every investigation with:
 snapshot-agent doctor
 ```
 
-It reports which config it read, whether the server answered, whether the WakaTime debug log is on, and what it would capture. It sends nothing.
+It reports which config it read, whether the server answered, whether the WakaTime debug log is on, whether the agent is running and polling for saves, and per project the state of its line-hash file and fingerprints. It sends nothing.
 
 ## No projects show up
 
@@ -55,6 +55,34 @@ The agent will not send a key over plain `http://` except to localhost. Use the 
 ## 401 errors in the agent log
 
 The server rejected the key. It was revoked, the account was removed from the allowlist, or the config has the wrong key. Generate a new install command and run it. Snapshots taken in the meantime are queued and sent once the key works.
+
+## History chain shows breaks
+
+Each snapshot carries a sequence number and the hash of the one before it. A break is listed under **Agent and integrity** on the project page:
+
+| Break | Usual cause | What to do |
+|---|---|---|
+| gap | The offline queue passed 5,000 snapshots and dropped its oldest, or a send was lost | Nothing; the chain continues. Keep machines online more often |
+| restart | The agent's state file in `~/.flockatime/state` was deleted or corrupt | `snapshot-agent doctor` reports it. The chain starts again at 1 |
+| fork | Two machines, or a restored backup, sent the same project with diverging history | Run one agent per project, or give each machine its own project name |
+
+## Panels say "needs agent 0.3"
+
+Saves, true line counts, the history chain, builds and tests, and shared code need snapshot-agent 0.3 or later. Agents update themselves at most hourly; to update now, run:
+
+```sh
+snapshot-agent update
+```
+
+If **Settings → Agents reporting** still flags a machine as outdated, it has `auto_update = false` or `SNAPSHOT_AGENT_NO_UPDATE` set, or cannot reach GitHub. Running the install command again also upgrades it.
+
+## Line counts are missing after upgrading
+
+The first snapshot after upgrading to 0.3, or after changing `path_salt`, is a baseline: every path hash changes once, and line counts start from the next capture.
+
+## No saves are recorded
+
+Saves are recorded by `run` between captures, only while you are active. `snapshot-agent doctor` says whether the save poller is on and how many files it watches. `once` never records saves.
 
 ## Charts show work at the wrong time
 

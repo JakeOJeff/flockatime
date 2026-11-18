@@ -25,7 +25,7 @@ export const SECTIONS: Section[] = [
   {
     title: 'Snapshot CLI',
     icon: 'terminal',
-    slugs: ['install-windows', 'install-macos', 'install-linux', 'cli-commands', 'cli-config', 'offline-queue'],
+    slugs: ['install-windows', 'install-macos', 'install-linux', 'cli-commands', 'cli-config', 'cli-signals', 'offline-queue'],
   },
   { title: 'Dashboard', icon: 'chart', slugs: ['dashboard-home', 'dashboard-projects', 'data-sources', 'keys', 'hackatime'] },
   { title: 'Self-hosting', icon: 'server', slugs: ['self-host', 'auth', 'env', 'local-dev'] },

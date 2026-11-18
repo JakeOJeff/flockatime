@@ -25,6 +25,8 @@ The colours match the two series on the daily time charts.
 
 **Snapshot CLI** shows how many projects the server knows, when the last snapshot arrived (and how long after capture, if it was queued) and which agent versions have reported.
 
+**Agents reporting** lists every platform and agent version that sent snapshots in the last 30 days, with how many projects and snapshots, the average capture time and when each was last heard. A version older than the newest one reporting is flagged *outdated*.
+
 **Hackatime** shows how the server reads your stats and whether it succeeded:
 
 | Status | Meaning |

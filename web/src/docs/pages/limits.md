@@ -2,9 +2,19 @@
 
 What flockatime does not do, or does only approximately, and why.
 
-## Lines moved is net, not diff
+## Older data has net line counts only
 
-The agent sends a line count per file, not line-level hashes. "Lines moved" is the change in a file's line count, so replacing a line with another reads as zero. This is the price of never sending contents.
+Agents before 0.3 sent a line count per file, not line diffs, so for those snapshots "lines moved" is the change in a file's line count and replacing a line reads as zero. From 0.3 the agent counts added and removed lines itself, from hashes it keeps locally. Mixed windows use true counts where they exist and the net estimate elsewhere, and the **Lines written** tile says *net estimate* when no true counts are in range.
+
+A project's first 0.3 snapshot, and the first one after the path salt changes, is a baseline with no line counts.
+
+## Save times need the predecessor
+
+Saves are sent as offsets from the agent's previous capture. The server turns them into times using the snapshot stored before it; for a project's very first snapshot it keeps the count but not the times.
+
+## Fingerprints are the latest only
+
+Only each file's most recent fingerprints are kept, so **Shared code** compares files as they are now, not as they were. Overlap is computed over at most 20,000 fingerprinted files per account, newest first, and only within one account.
 
 ## A late flush does not fix what follows it
 
@@ -22,7 +32,8 @@ Hackatime does not split daily time by project, so on a project page the Hackati
 
 - Files over 2 MB are not counted.
 - File lists over 100,000 files, or over about 1.9 MB compressed, are not stored. Snapshots still land, but churn cannot use those trees.
-- Churn compares at most 200 distinct trees per request.
+- For windows without per-line diffs, churn compares at most 200 distinct trees per request.
+- The agent drops fingerprints to keep a snapshot under 1 MB.
 
 ## Storage
 

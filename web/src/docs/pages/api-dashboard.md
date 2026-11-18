@@ -17,15 +17,17 @@ Who is signed in. Used by the dashboard to decide whether to show the sign-in sc
 
 ## GET /api/projects
 
-Every project with the state of its most recent snapshot: `name`, `captured_at`, `received_at`, `file_count`, `total_lines`, `tree_hash`, the git fields and `agent_version`. Also `active_seconds`: its sessions summed over the window, the same number as the project page's Active time. Takes `days` (default 7).
+Every project with the state of its most recent snapshot: `name`, `captured_at`, `received_at`, line, file and byte counts, `skipped_files`, `capture_ms`, `os`, `arch`, `agent_version`, every git field, `seq`, `chain`, `build_at` and `test_at`. Also `active_seconds` (its sessions summed over the window, the same number as the project page's Active time) and `window`: `snapshots`, `lines_added`, `lines_removed`, `saves`, `builds`, `tests` and `chain_breaks` in the window. Takes `days` (default 7).
 
 ## GET /api/projects/:name/timeline
 
-Every snapshot in the window, oldest first, with summary columns only: counts, diff summary, git state. No file lists.
+Every snapshot in the window, oldest first, with summary columns only: counts, diff summary, true line counts, saves, git state and chain. No file lists.
 
 ## GET /api/projects/:name/summary
 
-Headline totals for the window (active snapshots, lines added and removed, files touched, commits, branches, delayed snapshots and the largest lag) and a per-day roll-up in your time zone. Takes `tz`.
+Headline totals for the window (active snapshots, lines added and removed, tail and mid edits, files touched, commits, saves, builds, tests, capture cost, chain gaps, forks and restarts, delayed snapshots and the largest lag), a per-day roll-up in your time zone, and `breaks`: the 20 most recent chain breaks. Takes `tz`.
+
+Lines fall back to the net change in total lines for snapshots without true line counts; `exact_added` is null when every count in the window is such an estimate.
 
 ## GET /api/projects/:name/sessions
 
@@ -35,7 +37,7 @@ Coding sessions: runs of changed snapshots split on `SESSION_GAP_SECONDS`, newes
 {
   "sessions": [
     { "started_at": 1788360000, "ended_at": 1788367200, "seconds": 7200, "ticks": 58,
-      "lines_added": 412, "lines_removed": 96, "files_touched": 31 }
+      "lines_added": 412, "lines_removed": 96, "files_touched": 31, "saves": 140 }
   ],
   "gap_seconds": 900
 }
@@ -47,11 +49,23 @@ Active snapshots and lines moved per weekday (`dow`, 0 = Sunday) and `hour`, in 
 
 ## GET /api/projects/:name/commits
 
-Work grouped by HEAD commit: span, snapshot counts, lines added and removed, files touched and whether it was ever dirty. The 50 most recent.
+Work grouped by HEAD commit: span, snapshot counts, lines added and removed, saves, files touched, `committed_at` and whether it was ever dirty. The 50 most recent.
 
 ## GET /api/projects/:name/churn
 
-The 25 most-revised files by net lines moved, as path hashes, with `revisions` and current `lines`. The only endpoint that reads stored file lists, so it compares at most 200 distinct trees.
+The 25 most-revised files as path hashes, with `revisions` and current `lines`. With `source: "edits"` they are ranked by true lines added and removed, with `added`, `removed`, `tail`, `mid` and `last_edit`. For windows with no per-line diffs, `source: "trees"` ranks by net lines moved between stored file lists, comparing at most 200 distinct trees.
+
+## GET /api/projects/:name/saves
+
+Saves per local hour of day (`hours`, 24 counts) and the `total` in the window. Takes `tz`.
+
+## GET /api/projects/:name/overlap
+
+Files in the project sharing at least two fingerprints with another file of the same account: `path_hash`, `prints`, `shared`, and the other file's `other_project` and `other_path_hash`. The 50 with the largest share, plus `files_fingerprinted` and `files_compared`.
+
+## GET /api/agents
+
+One row per OS, CPU and agent version that sent snapshots in the window (default 30 days), with `projects`, `snapshots`, `last_seen` and `avg_capture_ms`.
 
 ## GET /api/hackatime
 

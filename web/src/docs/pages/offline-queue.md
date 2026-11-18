@@ -10,7 +10,7 @@ When a send fails (no network, a timeout, any non-2xx answer) the agent writes t
 - **up to 200 snapshots per request**,
 - with each snapshot's **original `captured_at`**, which is never rewritten.
 
-The queue holds **5,000 snapshots**. Past that the oldest are dropped, so a machine offline for weeks cannot fill your disk.
+The queue holds **5,000 snapshots**. Past that the oldest are dropped, so a machine offline for weeks cannot fill your disk. Dropped snapshots leave a hole in the sequence numbers, which the project page reports as a **gap** in the history chain.
 
 ## Delivery is at least once
 

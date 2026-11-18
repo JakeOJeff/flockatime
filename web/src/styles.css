@@ -89,13 +89,13 @@ body {
   background: var(--surface-0);
   color: var(--text-primary);
   font-family: var(--font);
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
 
 h1 {
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 600;
   margin: 0;
   letter-spacing: -0.01em;
@@ -136,7 +136,7 @@ h1 {
   border-radius: 50%;
   display: grid;
   place-items: center;
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 700;
   color: #fff;
   background: var(--accent);
@@ -147,7 +147,7 @@ h1 {
 }
 
 .me-name {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 700;
   letter-spacing: -0.01em;
   line-height: 1.25;
@@ -157,7 +157,7 @@ h1 {
 }
 
 .me-email {
-  font-size: 12px;
+  font-size: 13.5px;
   color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -167,7 +167,7 @@ h1 {
 .logout {
   display: block;
   text-align: center;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--text-secondary);
   text-decoration: none;
@@ -191,7 +191,7 @@ h1 {
 .nav a {
   color: var(--text-secondary);
   text-decoration: none;
-  font-weight: 500;
+  font-weight: 600;
   border-radius: 8px;
   padding: 9px 12px;
 }
@@ -210,7 +210,7 @@ h1 {
 .brand {
   margin-top: auto;
   padding: 0 6px;
-  font-size: 12px;
+  font-size: 13.5px;
   font-weight: 600;
   color: var(--text-muted);
   letter-spacing: 0.02em;
@@ -272,7 +272,7 @@ h1 {
 }
 
 .eyebrow {
-  font-size: 13px;
+  font-size: 15px;
   font-style: italic;
   color: var(--text-muted);
   margin-bottom: 4px;
@@ -294,7 +294,7 @@ h1 {
 .lede {
   margin: 10px 0 0;
   color: var(--text-secondary);
-  font-size: 15px;
+  font-size: 17px;
 }
 
 .filters {
@@ -311,7 +311,7 @@ h1 {
 }
 
 .filter span {
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -325,7 +325,7 @@ h1 {
 .back {
   display: inline-block;
   margin-bottom: 14px;
-  font-size: 13px;
+  font-size: 15px;
   color: var(--text-muted);
   text-decoration: none;
 }
@@ -389,11 +389,11 @@ h1 {
 }
 
 .donut-center strong {
-  font-size: 18px;
+  font-size: 20px;
 }
 
 .donut-center span {
-  font-size: 12px;
+  font-size: 13.5px;
   color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -416,7 +416,7 @@ h1 {
   grid-template-columns: 10px minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
-  font-size: 13px;
+  font-size: 15px;
   padding: 3px 6px;
   border-radius: 6px;
 }
@@ -457,14 +457,14 @@ h1 {
 
 .pcard-name {
   font-weight: 700;
-  font-size: 15px;
+  font-size: 17px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .pcard-time {
-  font-size: 24px;
+  font-size: 28px;
   font-weight: 700;
   letter-spacing: -0.02em;
 }
@@ -477,7 +477,7 @@ h1 {
 }
 
 .pcard-src {
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 500;
 }
 .pcard-src.cli,
@@ -493,12 +493,12 @@ h1 {
   display: flex;
   flex-wrap: wrap;
   gap: 4px 12px;
-  font-size: 12px;
+  font-size: 13.5px;
   color: var(--text-secondary);
 }
 
 .pcard-foot {
-  font-size: 12px;
+  font-size: 13.5px;
   color: var(--text-muted);
 }
 
@@ -527,7 +527,7 @@ h1 {
 }
 
 .plist .muted {
-  font-size: 12px;
+  font-size: 13.5px;
   white-space: nowrap;
 }
 
@@ -550,7 +550,7 @@ h1 {
 }
 
 .prose {
-  font-size: 14px;
+  font-size: 16px;
   color: var(--text-secondary);
 }
 
@@ -559,7 +559,7 @@ h1 {
 }
 
 .prose h2 {
-  font-size: 15px;
+  font-size: 17px;
   color: var(--text-primary);
   margin-top: 22px;
 }
@@ -618,8 +618,8 @@ button.chip[aria-pressed='true'] {
 }
 
 .card h2 {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 19px;
+  font-weight: 700;
   margin: 0 0 2px;
   letter-spacing: 0.01em;
 }
@@ -631,8 +631,8 @@ button.chip[aria-pressed='true'] {
   margin-left: 8px;
   padding: 1px 7px;
   border-radius: 999px;
-  font-size: 10.5px;
-  font-weight: 500;
+  font-size: 12px;
+  font-weight: 600;
   letter-spacing: 0.02em;
   vertical-align: 1px;
   border: 1px solid currentColor;
@@ -645,13 +645,13 @@ button.chip[aria-pressed='true'] {
 }
 
 .section-label {
-  font-size: 12px;
+  font-size: 13.5px;
   color: var(--text-muted);
   margin: 26px 0 10px;
 }
 
 .card .sub {
-  font-size: 12px;
+  font-size: 14.5px;
   color: var(--text-muted);
   margin: 0 0 16px;
 }
@@ -672,20 +672,20 @@ button.chip[aria-pressed='true'] {
 }
 
 .tile .label {
-  font-size: 12px;
+  font-size: 13.5px;
   color: var(--text-secondary);
 }
 
 .tile .value {
-  font-size: 26px;
-  font-weight: 600;
+  font-size: 30px;
+  font-weight: 700;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
   margin-top: 2px;
 }
 
 .tile .delta {
-  font-size: 12px;
+  font-size: 13.5px;
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -699,7 +699,7 @@ button.chip[aria-pressed='true'] {
   border-radius: var(--radius);
   padding: 12px 16px;
   margin-bottom: 18px;
-  font-size: 13px;
+  font-size: 15px;
   color: var(--text-secondary);
 }
 
@@ -739,7 +739,7 @@ td:first-child {
 }
 
 th {
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
@@ -748,7 +748,7 @@ th {
 
 td.hash {
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 13.5px;
   color: var(--text-secondary);
 }
 
@@ -756,7 +756,7 @@ td.hash {
 .legend {
   display: flex;
   gap: 14px;
-  font-size: 12px;
+  font-size: 13.5px;
   color: var(--text-secondary);
   margin-top: 10px;
 }
@@ -785,7 +785,7 @@ td.hash {
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 8px 10px;
-  font-size: 12px;
+  font-size: 13.5px;
   box-shadow: 0 6px 20px rgb(0 0 0 / 0.14);
   white-space: nowrap;
   z-index: 5;
@@ -839,7 +839,7 @@ a {
 }
 
 .card h3 {
-  font-size: 12px;
+  font-size: 13.5px;
   font-weight: 600;
   color: var(--text-secondary);
   margin: 0 0 10px;
@@ -884,7 +884,7 @@ a {
   grid-template-columns: minmax(0, 9em) 1fr auto;
   gap: 10px;
   align-items: center;
-  font-size: 13px;
+  font-size: 15px;
 }
 
 .rank-name {
@@ -898,7 +898,7 @@ a {
 }
 
 .rank-track {
-  height: 10px;
+  height: 16px;
 }
 
 .rank-bar {
@@ -915,13 +915,20 @@ a {
 
 /* ---------- Snapshot CLI vs Hackatime, per project ---------- */
 
+/* The legend doubles as the totals: one line instead of a row of tiles. */
 .cmp-legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 18px;
-  font-size: 12px;
+  gap: 4px 20px;
+  font-size: 15px;
   color: var(--text-secondary);
-  margin-bottom: 12px;
+  margin-bottom: 14px;
+}
+
+.cmp-legend strong {
+  margin-left: 4px;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
 }
 
 .cmp-key::before {
@@ -945,15 +952,17 @@ a {
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
+/* Name, the bar pair, and the pair of values; each bar is exactly as tall as
+   its value's line so the two read across as one row. */
 .cmp li {
   display: grid;
-  grid-template-columns: minmax(0, 10em) 1fr auto;
-  gap: 10px;
+  grid-template-columns: minmax(0, 10em) 1fr 6.5em;
+  gap: 12px;
   align-items: center;
-  font-size: 13px;
+  font-size: 15px;
 }
 
 .cmp li a {
@@ -963,19 +972,16 @@ a {
 .cmp-bars,
 .cmp-values {
   display: grid;
-  gap: 3px;
+  gap: 2px;
 }
 
-/* Each bar sits in a 14px row, the same height as its value, so the pair lines up. */
 .cmp-track {
-  height: 14px;
-  display: flex;
-  align-items: center;
+  height: 18px;
 }
 
 .cmp-bar {
   display: block;
-  height: 8px;
+  height: 100%;
   border-radius: 0 4px 4px 0;
 }
 .cmp-bar.cli {
@@ -986,8 +992,8 @@ a {
 }
 
 .cmp-value {
-  font-size: 11.5px;
-  line-height: 14px;
+  font-size: 13.5px;
+  line-height: 18px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   text-align: right;
@@ -1000,7 +1006,7 @@ a {
 }
 
 .cmp-more {
-  margin: 12px 0 0;
+  margin: 10px 0 0;
 }
 
 /* ---------- weekday × hour heatmap ---------- */
@@ -1023,7 +1029,7 @@ a {
 
 .hm-day,
 .hm-hour {
-  font-size: 11px;
+  font-size: 12.5px;
   color: var(--text-muted);
 }
 
@@ -1044,7 +1050,7 @@ a {
 }
 
 .hm-readout {
-  font-size: 12px;
+  font-size: 13.5px;
   margin-top: 10px;
 }
 
@@ -1087,7 +1093,7 @@ tr.row-link.current td:first-child {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: 13.5px;
   font-weight: 600;
   color: var(--text-secondary);
   border: 1px solid var(--border);
@@ -1103,7 +1109,7 @@ tr.row-link.current td:first-child {
 }
 
 .signin-error {
-  font-size: 13px;
+  font-size: 15px;
   color: var(--text-secondary);
   border-left: 3px solid var(--series-2);
   text-align: left;
@@ -1147,7 +1153,7 @@ tr.row-link.current td:first-child {
   flex: 1;
   min-width: 0;
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 13.5px;
   line-height: 1.6;
   overflow-wrap: anywhere;
 }
@@ -1160,7 +1166,7 @@ tr.row-link.current td:first-child {
 .steps {
   margin: 18px 0 16px;
   padding-left: 22px;
-  font-size: 13px;
+  font-size: 15px;
   color: var(--text-primary);
 }
 
@@ -1194,7 +1200,7 @@ tr.row-link.current td:first-child {
 .steps li > code,
 .cmd-note code {
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 13.5px;
   background: var(--surface-0);
   border: 1px solid var(--border);
   border-radius: 4px;
@@ -1203,7 +1209,7 @@ tr.row-link.current td:first-child {
 
 .steps kbd {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 12.5px;
   background: var(--surface-0);
   border: 1px solid var(--border);
   border-bottom-width: 2px;
@@ -1269,7 +1275,7 @@ tr.row-link.current td:first-child {
 }
 
 .tiles.six .value {
-  font-size: 22px;
+  font-size: 26px;
 }
 
 /* ---------- admin ---------- */
@@ -1286,7 +1292,7 @@ tr.row-link.current td:first-child {
   border: 1px solid var(--cat-4);
   border-radius: var(--radius);
   background: color-mix(in srgb, var(--cat-4) 12%, var(--surface-1));
-  font-size: 13px;
+  font-size: 15px;
 }
 
 .input {
@@ -1323,7 +1329,7 @@ tr.row-link.current td:first-child {
   margin-left: 8px;
   padding: 1px 8px;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 600;
   vertical-align: 1px;
 }
@@ -1334,12 +1340,12 @@ tr.row-link.current td:first-child {
 }
 
 .small {
-  font-size: 11.5px;
+  font-size: 13px;
 }
 
 .mono {
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 13.5px;
   word-break: break-all;
 }
 
@@ -1379,7 +1385,7 @@ td.actions {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 13px;
+  font-size: 15px;
   color: var(--text-secondary);
 }
 
@@ -1480,5 +1486,5 @@ td.actions {
 
 .let-in {
   margin-left: 8px;
-  font-size: 12px;
+  font-size: 13.5px;
 }

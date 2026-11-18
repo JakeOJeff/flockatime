@@ -12,7 +12,7 @@ method to add.
 ```
 src/          Worker — Hono routes
   ingest.ts     POST /v1/snapshots   (the agent writes here)
-  api.ts        GET  /api/*          (the dashboard reads here)
+  api.ts        GET  /api/*          (the dashboard reads here: projects, agents, overlap, …)
   trees.ts      file-list packing + diffing
   auth.ts       bearer keys, dashboard session gate
   oauth.ts      GET  /auth/*         (Hack Club Auth sign-in)
@@ -24,7 +24,7 @@ migrations/   D1 schema
 web/          Vite + React dashboard, built to web/dist
   src/docs/     the Docs page: one Markdown file per page in pages/,
                 sidebar order in content.ts
-scripts/      key minting
+scripts/      key minting, local sample data (seed-local.mjs)
 ```
 
 ## How the data is stored
@@ -39,8 +39,38 @@ for data nobody queries per-file, so:
 - **The diff runs at ingest,** while both lists are already in memory. The
   added / removed / modified / lines-delta summary is written onto the snapshot
   row, so **no dashboard query unpacks a file list** on a normal page load.
-- The one exception is `/api/projects/:name/churn`, which reads stored lists back
-  to rank per-file volatility. It is capped at 200 trees per request.
+- **Per-snapshot file data is split out.** A tree is shared by every snapshot
+  that reaches it, so the per-file `added` / `removed` / `tail` / `mid` that
+  agent 0.3 sends go into `file_edits` (one row per changed file per snapshot),
+  and each file's latest `fp` fingerprints into `file_prints`. The stored file
+  list keeps only `path_hash`, `content_hash`, `lines`, `bytes`, `mtime`.
+- The one exception is `/api/projects/:name/churn` for windows that predate
+  per-line diffs: it reads stored lists back to rank per-file volatility,
+  capped at 200 trees per request. With `file_edits` it is a plain aggregate.
+
+## What agent 0.3 adds
+
+Since snapshot-agent 0.2.2 / 0.3.0 the payload also carries working-tree counts
+(staged, modified, untracked, conflicted, uncommitted lines, stashes, behind,
+commits, last commit time), repo size, skipped files, capture time, OS and CPU,
+true per-file line diffs, a `seq` / `prev` hash chain, save times, build and
+test cache times, and winnowed code fingerprints. Path hashes are now salted
+HMACs, which the agent's `reveal` command maps back locally. Migration
+`0006_cli_v03.sql` adds a nullable column for each, so older agents keep working.
+
+At ingest the Worker also:
+
+- checks `seq` / `prev` against the stored predecessor and records `ok`,
+  `start`, `gap`, `fork` or `restart` in `snapshots.chain`;
+- turns `saves` offsets into absolute times using the predecessor's
+  `captured_at` (`save_times`, JSON);
+- sums per-file edits into `lines_added`, `lines_removed`, `tail_edits` and
+  `mid_edits`. Queries fall back to the net `lines_delta` wherever those are
+  NULL (older agents, baselines).
+
+Fingerprint overlap (`/api/projects/:name/overlap`) is computed per request
+over the account's `file_prints`, at most 20,000 rows, and never across
+accounts.
 
 Two consequences of the agent's design are handled explicitly:
 

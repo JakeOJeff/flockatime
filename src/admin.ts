@@ -202,7 +202,8 @@ admin.get('/api/admin/users/:id/snapshots', async (c) => {
     `SELECT s.id, p.name AS project, s.captured_at, s.received_at, s.tree_hash,
             s.file_count, s.total_lines, s.unchanged,
             s.files_added, s.files_removed, s.files_modified, s.lines_delta,
-            s.git_head, s.git_branch, s.git_dirty, s.git_ahead, s.agent_version
+            s.git_head, s.git_branch, s.git_dirty, s.git_ahead, s.agent_version,
+            s.lines_added, s.lines_removed, s.save_count, s.seq, s.chain, s.os, s.arch, s.capture_ms
        FROM snapshots s JOIN projects p ON p.id = s.project_id
       WHERE p.account_id = ?1 AND s.id < ?2 AND (?3 IS NULL OR p.name = ?3)
       ORDER BY s.id DESC

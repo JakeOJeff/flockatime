@@ -850,6 +850,9 @@ function SnapshotLog({ id, projects, rev, act }: { id: string; projects: string[
                 <th>Files</th>
                 <th>Lines</th>
                 <th>Δ lines</th>
+                <th>+ / − lines</th>
+                <th>Saves</th>
+                <th>Seq</th>
                 <th>+ / − / ~ files</th>
                 <th>Branch</th>
                 <th>Head</th>
@@ -867,6 +870,12 @@ function SnapshotLog({ id, projects, rev, act }: { id: string; projects: string[
                   <td>{num(s.file_count)}</td>
                   <td>{num(s.total_lines)}</td>
                   <td>{signed(s.lines_delta)}</td>
+                  <td>{s.lines_added === null ? '—' : `+${num(s.lines_added)} / −${num(s.lines_removed)}`}</td>
+                  <td>{s.save_count ?? '—'}</td>
+                  <td>
+                    {s.seq ?? '—'}
+                    {s.chain && s.chain !== 'ok' && s.chain !== 'start' ? <span className="pill warn">{s.chain}</span> : null}
+                  </td>
                   <td>
                     {s.files_added ?? 0} / {s.files_removed ?? 0} / {s.files_modified ?? 0}
                   </td>
@@ -878,7 +887,7 @@ function SnapshotLog({ id, projects, rev, act }: { id: string; projects: string[
                   <td className="hash" title={s.tree_hash}>
                     {s.tree_hash.slice(0, 8)}
                   </td>
-                  <td>{s.agent_version || '—'}</td>
+                  <td title={s.os ? `${s.os}/${s.arch}${s.capture_ms !== null ? `, ${s.capture_ms} ms capture` : ''}` : undefined}>{s.agent_version || '—'}</td>
                   <td>
                     <button
                       className="link-btn"

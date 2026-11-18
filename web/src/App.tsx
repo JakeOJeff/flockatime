@@ -7,7 +7,7 @@ import { Docs } from './pages/Docs';
 import { Extensions } from './pages/Extensions';
 import { Settings } from './pages/Settings';
 import { Admin } from './pages/Admin';
-import type { Source } from './ui';
+import { ALL_TIME, type Source } from './ui';
 
 export interface User {
   name: string | null;
@@ -82,7 +82,7 @@ export type ViewAsFn = (v: ViewAs | null, page?: Page, project?: string) => void
 
 function Shell({ user, admin }: { user: User | null; admin: boolean }) {
   const [route, setRoute] = useState(() => parseHash(location.hash));
-  const [days, setDays] = useState(7);
+  const [days, setDays] = useState(ALL_TIME);
   const [source, setSourceState] = useState<Source>(readSource);
   const setSource = (s: Source) => {
     setSourceState(s);

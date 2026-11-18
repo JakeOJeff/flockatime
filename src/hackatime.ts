@@ -1,7 +1,10 @@
 import { Hono } from 'hono';
 import type { AppEnv } from './types';
 import { authOn, isOwner, requireDashboard, sessionUser } from './auth';
-import { tzOffsetMinutes } from './api';
+import { MAX_DAYS, tzOffsetMinutes } from './api';
+
+/** The longest span of days the daily chart draws. */
+const DAILY_DAYS = 90;
 
 /**
  * Hackatime (hackatime.hackclub.com) editor-time stats, proxied so the browser
@@ -75,12 +78,20 @@ hackatime.get('/api/hackatime', async (c) => {
   if (!who) return c.json({ configured: false });
   const source = key ? 'api_key' : user ? 'username' : 'hack_club';
 
-  const days = Math.min(Math.max(Number(c.req.query('days') ?? 7) || 7, 1), 365);
+  // 3650 days is the dashboard's "All time".
+  const days = Math.min(Math.max(Number(c.req.query('days') ?? 7) || 7, 1), MAX_DAYS);
   const tz = tzOffsetMinutes(c);
   const now = Math.floor(Date.now() / 1000);
   const from = now - days * 86400;
   const range = new URLSearchParams({
     start_date: new Date(from * 1000).toISOString(),
+    end_date: new Date(now * 1000).toISOString(),
+  });
+  // Spans only feed the daily chart, which never shows more than 90 days, so
+  // a long range does not drag years of heartbeats across the wire.
+  const spansFrom = Math.max(from, now - DAILY_DAYS * 86400);
+  const spansRange = new URLSearchParams({
+    start_date: new Date(spansFrom * 1000).toISOString(),
     end_date: new Date(now * 1000).toISOString(),
   });
   const headers: HeadersInit = { accept: 'application/json' };
@@ -89,7 +100,7 @@ hackatime.get('/api/hackatime', async (c) => {
 
   const [statsRes, spansRes] = await Promise.all([
     fetch(`${base}/stats?features=languages,projects,editors,operating_systems,categories&${range}`, { headers }),
-    fetch(`${base}/heartbeats/spans?${range}`, { headers }),
+    fetch(`${base}/heartbeats/spans?${spansRange}`, { headers }),
   ]);
 
   if (!statsRes.ok || !spansRes.ok) {
@@ -113,7 +124,7 @@ hackatime.get('/api/hackatime', async (c) => {
   const daily = new Map<string, number>();
   const hours = new Array<number>(24).fill(0);
   for (const s of spans ?? []) {
-    let t = Math.max(s.start_time, from);
+    let t = Math.max(s.start_time, spansFrom);
     const end = Math.min(s.end_time, now);
     while (t < end) {
       const next = Math.min(end, (Math.floor((t + tz * 60) / 3600) + 1) * 3600 - tz * 60);

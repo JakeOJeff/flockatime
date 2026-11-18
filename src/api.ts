@@ -14,9 +14,12 @@ export const api = new Hono<AppEnv>();
 
 api.use('/api/*', requireDashboard);
 
-/** `days` query param, clamped to something a dashboard can actually plot. */
+/** The widest window any endpoint serves: the dashboard's "All time" (ten years). */
+export const MAX_DAYS = 3650;
+
+/** `days` query param, clamped to 1..MAX_DAYS. */
 function windowStart(c: { req: { query: (k: string) => string | undefined } }, fallback = 7): number {
-  const days = Math.min(Math.max(Number(c.req.query('days') ?? fallback) || fallback, 1), 365);
+  const days = Math.min(Math.max(Number(c.req.query('days') ?? fallback) || fallback, 1), MAX_DAYS);
   return Math.floor(Date.now() / 1000) - days * 86400;
 }
 

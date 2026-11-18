@@ -1,9 +1,13 @@
+/** "All time": ten years, the widest window the server serves. */
+export const ALL_TIME = 3650;
+
 export const RANGES = [
   { days: 1, label: 'Last 24 hours' },
   { days: 7, label: 'Last 7 days' },
   { days: 30, label: 'Last 30 days' },
   { days: 90, label: 'Last 90 days' },
   { days: 365, label: 'Last year' },
+  { days: ALL_TIME, label: 'All time' },
 ];
 
 export const rangeLabel = (days: number) => RANGES.find((r) => r.days === days)?.label ?? `${days} days`;

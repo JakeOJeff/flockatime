@@ -6,7 +6,7 @@ The read API behind the dashboard. Every `/api/*` route needs a signed-in sessio
 
 | Param | Default | Meaning |
 |---|---|---|
-| `days` | `7` | Window size, clamped to 1–365 |
+| `days` | `7` | Window size, clamped to 1–3650 (the dashboard sends 3650 for All time) |
 | `tz` | `0` | Your UTC offset in minutes, as `-new Date().getTimezoneOffset()`. Used to cut days and hours |
 
 A project name in a path must be URL-encoded. An unknown project returns `404 {"error": "unknown project"}`.

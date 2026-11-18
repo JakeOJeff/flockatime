@@ -8,7 +8,6 @@ Get the agent running on your machine, learn to read the dashboard, or run your 
 rocket | Quick start | Set up flockatime in a few minutes. | quick-start
 terminal | Install the CLI | One command on Windows, macOS or Linux. | install-windows
 sliders | Configuration | Tune the agent's interval, projects and queue. | cli-config
-code | What the agent records | Line diffs, saves, the history chain and fingerprints. | cli-signals
 chart | Reading the dashboard | What every tile and chart means. | dashboard-projects
 server | Self-hosting | Run flockatime on your own Cloudflare account. | self-host
 lifebuoy | Troubleshooting | Solve common setup problems. | troubleshooting

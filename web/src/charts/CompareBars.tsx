@@ -15,7 +15,18 @@ export interface CompareRow {
  * Snapshot CLI vs Hackatime time per project: two bars on one shared scale, so
  * a project's pair reads as a ratio and every project is comparable.
  */
-export function CompareBars({ rows, limit = 12 }: { rows: CompareRow[]; limit?: number }) {
+export function CompareBars({
+  rows,
+  cliTotal,
+  htTotal,
+  limit = 6,
+}: {
+  rows: CompareRow[];
+  cliTotal: number;
+  /** Hackatime's total, or null when Hackatime is off or unavailable. */
+  htTotal: number | null;
+  limit?: number;
+}) {
   if (rows.length === 0) return <div className="empty">Nothing recorded in this window.</div>;
 
   const shown = rows.slice(0, limit);
@@ -34,8 +45,14 @@ export function CompareBars({ rows, limit = 12 }: { rows: CompareRow[]; limit?: 
   return (
     <>
       <div className="cmp-legend">
-        <span className="cmp-key cli">Snapshot CLI active time</span>
-        <span className="cmp-key hackatime">Hackatime editor time</span>
+        <span className="cmp-key cli">
+          Snapshot CLI <strong>{humanDuration(cliTotal)}</strong>
+        </span>
+        {htTotal !== null && (
+          <span className="cmp-key hackatime">
+            Hackatime <strong>{humanDuration(htTotal)}</strong>
+          </span>
+        )}
       </div>
       <ul className="cmp">
         {shown.map((r) => (

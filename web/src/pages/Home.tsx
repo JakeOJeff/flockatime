@@ -113,18 +113,11 @@ export function Home({
         {rangeLabel(days)}. Snapshot CLI counts the time your files were changing; Hackatime counts all editor time,
         reading included, so it usually runs higher. Projects are matched by name.
       </p>
-      <div className="tiles inset">
-        <Tile label="Snapshot CLI" value={humanDuration(cliTotal)} sub="active time" />
-        {ok && <Tile label="Hackatime" value={humanDuration(ok.total_seconds)} sub="editor time" />}
-        {ok && (
-          <Tile
-            label="CLI ÷ Hackatime"
-            value={ok.total_seconds ? `${Math.round((cliTotal / ok.total_seconds) * 100)}%` : '—'}
-            sub="of editor time spent changing code"
-          />
-        )}
-      </div>
-      <CompareBars rows={compareRows(projects, ok?.projects ?? null)} />
+      <CompareBars
+        rows={compareRows(projects, ok?.projects ?? null)}
+        cliTotal={cliTotal}
+        htTotal={ok ? ok.total_seconds : null}
+      />
     </div>
   );
 

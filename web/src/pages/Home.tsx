@@ -15,6 +15,7 @@ import { href, type User } from '../App';
 import { Donut } from '../charts/Donut';
 import { DailyTime } from '../charts/DailyTime';
 import { RankBars } from '../charts/RankBars';
+import { CompareBars, compareRows } from '../charts/CompareBars';
 import {
   PageHead,
   RangeFilter,
@@ -98,6 +99,35 @@ export function Home({
   );
   const todaySeconds = today?.daily.find((d) => d.day === localDay(Date.now() / 1000))?.seconds ?? 0;
 
+  // Both sources side by side, per project. Hackatime's half is left out when
+  // it is filtered off or unavailable, leaving the CLI's time on its own.
+  const cliTotal = projects?.reduce((a, p) => a + p.active_seconds, 0) ?? 0;
+  const compare = showCli(source) && projects && projects.length + (ok?.projects.length ?? 0) > 0 && (
+    <div className="card">
+      <h2>
+        {ok ? 'Snapshot CLI vs Hackatime' : 'Snapshot CLI time by project'}
+        <SourceTag source="cli" />
+        {ok && <SourceTag source="hackatime" />}
+      </h2>
+      <p className="sub">
+        {rangeLabel(days)}. Snapshot CLI counts the time your files were changing; Hackatime counts all editor time,
+        reading included, so it usually runs higher. Projects are matched by name.
+      </p>
+      <div className="tiles inset">
+        <Tile label="Snapshot CLI" value={humanDuration(cliTotal)} sub="active time" />
+        {ok && <Tile label="Hackatime" value={humanDuration(ok.total_seconds)} sub="editor time" />}
+        {ok && (
+          <Tile
+            label="CLI ÷ Hackatime"
+            value={ok.total_seconds ? `${Math.round((cliTotal / ok.total_seconds) * 100)}%` : '—'}
+            sub="of editor time spent changing code"
+          />
+        )}
+      </div>
+      <CompareBars rows={compareRows(projects, ok?.projects ?? null)} />
+    </div>
+  );
+
   return (
     <>
       <PageHead
@@ -136,6 +166,8 @@ export function Home({
       )}
       {showHt(source) && ht && ht.configured && ht.error && <div className="card empty">{HT_ERRORS[ht.error]}</div>}
 
+      {!ok && compare}
+
       {ok && (
         <>
           <div className="tiles six">
@@ -146,6 +178,8 @@ export function Home({
             <Tile label="Top editor" value={top(ok.editors)} />
             <Tile label="Top category" value={top(ok.categories)} />
           </div>
+
+          {compare}
 
           <div className="grid-2">
             <div className="card">

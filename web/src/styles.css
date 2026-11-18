@@ -907,6 +907,96 @@ a {
   white-space: nowrap;
 }
 
+/* ---------- Snapshot CLI vs Hackatime, per project ---------- */
+
+.cmp-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+
+.cmp-key::before {
+  content: '';
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin-right: 6px;
+  vertical-align: -1px;
+}
+.cmp-key.cli::before {
+  background: var(--cat-1);
+}
+.cmp-key.hackatime::before {
+  background: var(--cat-2);
+}
+
+.cmp {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.cmp li {
+  display: grid;
+  grid-template-columns: minmax(0, 10em) 1fr auto;
+  gap: 10px;
+  align-items: center;
+  font-size: 13px;
+}
+
+.cmp li a {
+  color: inherit;
+}
+
+.cmp-bars,
+.cmp-values {
+  display: grid;
+  gap: 3px;
+}
+
+/* Each bar sits in a 14px row, the same height as its value, so the pair lines up. */
+.cmp-track {
+  height: 14px;
+  display: flex;
+  align-items: center;
+}
+
+.cmp-bar {
+  display: block;
+  height: 8px;
+  border-radius: 0 4px 4px 0;
+}
+.cmp-bar.cli {
+  background: var(--cat-1);
+}
+.cmp-bar.hackatime {
+  background: var(--cat-2);
+}
+
+.cmp-value {
+  font-size: 11.5px;
+  line-height: 14px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-align: right;
+}
+.cmp-value.cli {
+  color: var(--cat-1);
+}
+.cmp-value.hackatime {
+  color: var(--cat-2);
+}
+
+.cmp-more {
+  margin: 12px 0 0;
+}
+
 /* ---------- weekday × hour heatmap ---------- */
 
 .heatmap {

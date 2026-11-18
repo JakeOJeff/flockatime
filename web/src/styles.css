@@ -216,6 +216,12 @@ h1 {
   letter-spacing: 0.02em;
 }
 
+.brand-version {
+  margin-left: 4px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
 .main {
   width: 100%;
   max-width: 1160px;

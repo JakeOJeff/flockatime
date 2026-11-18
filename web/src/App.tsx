@@ -167,7 +167,9 @@ function Shell({ user, admin }: { user: User | null; admin: boolean }) {
           ))}
         </nav>
 
-        <div className="brand">flockatime</div>
+        <div className="brand" title={__APP_COMMIT__ ? `Built from commit ${__APP_COMMIT__}` : undefined}>
+          flockatime <span className="brand-version">v{__APP_VERSION__}</span>
+        </div>
       </aside>
 
       <main className={page === 'docs' || page === 'admin' ? 'main wide' : 'main'} key={viewAs?.id ?? 'self'}>

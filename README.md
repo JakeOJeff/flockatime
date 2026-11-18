@@ -220,8 +220,8 @@ minting one from the terminal.
 ## Known limits
 
 - A late queue flush that lands *before* rows already stored gets a correct diff
-  itself, but the row that follows it keeps its original, now-stale summary. It is
-  not recomputed.
+  itself, but the row that follows it keeps its original, now-stale summary and chain status
+  (it may read as a gap that the flush has since filled). Neither is recomputed.
 - Daily roll-ups and the weekly heatmap are cut in the viewer's current UTC offset,
   so days that crossed a DST change can be off by an hour at the edges.
 - With `REQUIRE_AUTH` off (local dev) there are no accounts: everything is filed

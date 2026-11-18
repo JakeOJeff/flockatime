@@ -1,20 +1,58 @@
-export interface ProjectRow {
-  name: string;
+export type Chain = 'ok' | 'start' | 'restart' | 'gap' | 'fork';
+
+/**
+ * The state at one snapshot. Everything past the original five git fields is
+ * null from agents before 0.2.2 / 0.3.0, which did not send it.
+ */
+export interface StateRow {
   captured_at: number | null;
   received_at: number | null;
   file_count: number | null;
   total_lines: number | null;
+  total_bytes: number | null;
+  skipped_files: number | null;
+  capture_ms: number | null;
+  os: string | null;
+  arch: string | null;
+  agent_version: string | null;
   tree_hash: string | null;
   git_head: string | null;
   git_branch: string | null;
   git_dirty: number | null;
   git_ahead: number | null;
-  agent_version: string | null;
-  /** Snapshot CLI active time (summed sessions) in the requested window. */
-  active_seconds: number;
+  git_behind: number | null;
+  git_staged: number | null;
+  git_modified: number | null;
+  git_untracked: number | null;
+  git_conflicted: number | null;
+  git_insertions: number | null;
+  git_deletions: number | null;
+  git_commits: number | null;
+  git_last_commit_at: number | null;
+  git_stashes: number | null;
+  seq: number | null;
+  chain: Chain | null;
+  build_at: number | null;
+  test_at: number | null;
 }
 
-export interface SnapshotRow {
+export interface ProjectRow extends StateRow {
+  name: string;
+  /** Snapshot CLI active time (summed sessions) in the requested window. */
+  active_seconds: number;
+  /** What happened in the requested window. */
+  window: {
+    snapshots: number;
+    lines_added: number | null;
+    lines_removed: number | null;
+    saves: number | null;
+    builds: number;
+    tests: number;
+    chain_breaks: number;
+  };
+}
+
+export interface SnapshotRow extends StateRow {
   captured_at: number;
   received_at: number;
   file_count: number;
@@ -24,10 +62,12 @@ export interface SnapshotRow {
   files_removed: number | null;
   files_modified: number | null;
   lines_delta: number | null;
-  git_head: string | null;
-  git_branch: string | null;
-  git_dirty: number | null;
-  git_ahead: number | null;
+  lines_added: number | null;
+  lines_removed: number | null;
+  tail_edits: number | null;
+  mid_edits: number | null;
+  save_count: number | null;
+  fp_files: number | null;
 }
 
 /** One commit's worth of work: the span during which it was HEAD. */
@@ -42,6 +82,9 @@ export interface CommitRow {
   lines_added: number | null;
   lines_removed: number | null;
   files_touched: number | null;
+  saves: number | null;
+  /** When this commit was made, from git (agent 0.2.2+). */
+  committed_at: number | null;
   ever_dirty: number | null;
 }
 
@@ -50,6 +93,35 @@ export interface ChurnRow {
   revisions: number;
   lines_moved: number;
   lines: number;
+  /** Present when ranked from true per-file diffs (agent 0.3+). */
+  added?: number;
+  removed?: number;
+  tail?: number;
+  mid?: number;
+  last_edit?: number;
+}
+
+export interface Churn {
+  files: ChurnRow[];
+  /** 'edits': true line diffs; 'trees': net line change between stored file lists. */
+  source: 'edits' | 'trees';
+  trees_compared: number;
+}
+
+export interface OverlapPair {
+  path_hash: string;
+  lines: number;
+  prints: number;
+  other_project: string;
+  other_path_hash: string;
+  other_lines: number;
+  shared: number;
+}
+
+export interface Overlap {
+  pairs: OverlapPair[];
+  files_fingerprinted: number;
+  files_compared: number;
 }
 
 export interface SessionRow {
@@ -60,6 +132,7 @@ export interface SessionRow {
   lines_added: number;
   lines_removed: number;
   files_touched: number;
+  saves: number;
 }
 
 export interface DailyRow {
@@ -67,6 +140,29 @@ export interface DailyRow {
   active_ticks: number | null;
   lines_added: number | null;
   lines_removed: number | null;
+  saves: number | null;
+}
+
+export interface ChainBreak {
+  captured_at: number;
+  seq: number;
+  chain: 'gap' | 'fork' | 'restart';
+}
+
+export interface SavesByHour {
+  hours: number[];
+  total: number;
+  longest_gap_in_session: number;
+}
+
+export interface AgentRow {
+  os: string | null;
+  arch: string | null;
+  agent_version: string | null;
+  projects: number;
+  snapshots: number;
+  last_seen: number;
+  avg_capture_ms: number | null;
 }
 
 export interface Summary {
@@ -84,10 +180,30 @@ export interface Summary {
     files_modified: number | null;
     commits: number | null;
     branches: number | null;
+    /** Sum of true added lines only; null when every line count is a net estimate. */
+    exact_added: number | null;
+    tail_edits: number | null;
+    mid_edits: number | null;
+    saves: number | null;
+    builds: number;
+    tests: number;
+    last_build_at: number | null;
+    last_test_at: number | null;
+    fingerprinted_files: number | null;
+    avg_capture_ms: number | null;
+    max_capture_ms: number | null;
+    /** Growth of git's commit count over the window. */
+    commits_made: number | null;
+    /** Snapshots that carried a seq number. */
+    chained: number;
+    chain_gaps: number | null;
+    chain_forks: number | null;
+    chain_restarts: number | null;
     first_seen: number | null;
     last_seen: number | null;
   } | null;
   daily: DailyRow[];
+  breaks: ChainBreak[];
   lag_threshold_seconds: number;
 }
 
@@ -212,9 +328,39 @@ export const getSessions = (name: string, days: number) =>
   );
 
 export const getChurn = (name: string, days: number) =>
-  get<{ files: ChurnRow[]; trees_compared: number }>(
-    `/api/projects/${encodeURIComponent(name)}/churn?days=${days}`,
-  );
+  get<Churn>(`/api/projects/${encodeURIComponent(name)}/churn?days=${days}`);
+
+export const getOverlap = (name: string) => get<Overlap>(`/api/projects/${encodeURIComponent(name)}/overlap`);
+
+export const getSaves = (name: string, days: number) =>
+  get<SavesByHour>(`/api/projects/${encodeURIComponent(name)}/saves?days=${days}&tz=${tz()}`);
+
+export const listAgents = (days = 30) => get<{ agents: AgentRow[] }>(`/api/agents?days=${days}`);
+
+/** Newest agent version among those given, by X.Y.Z. */
+export function newestVersion(versions: (string | null | undefined)[]): string | null {
+  const cmp = (x: string, y: string) => {
+    const [a, b] = [x.split('.').map(Number), y.split('.').map(Number)];
+    return a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
+  };
+  let best: string | null = null;
+  for (const v of versions) {
+    if (v && /^\d+\.\d+\.\d+$/.test(v) && (!best || cmp(v, best) > 0)) best = v;
+  }
+  return best;
+}
+
+/** "3 hours ago"-style relative time. */
+export function ago(unix: number | null | undefined): string {
+  if (!unix) return '—';
+  const s = Math.max(0, Date.now() / 1000 - unix);
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+}
+
+export const signed = (n: number) => `${n >= 0 ? '+' : '−'}${Math.abs(n).toLocaleString()}`;
 
 export const getCommits = (name: string, days: number) =>
   get<{ commits: CommitRow[] }>(`/api/projects/${encodeURIComponent(name)}/commits?days=${days}`);

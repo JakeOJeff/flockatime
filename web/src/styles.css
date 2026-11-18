@@ -1488,3 +1488,135 @@ td.actions {
   margin-left: 8px;
   font-size: 13.5px;
 }
+
+/* ---------- snapshot-agent 0.3 panels ---------- */
+
+/* Saves per hour of day: 24 bars, one hue. */
+.hb-plot {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 140px;
+  border-bottom: 1px solid var(--grid);
+}
+.hb-col {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  cursor: default;
+}
+.hb-bar {
+  width: 100%;
+  background: var(--series-1);
+  opacity: 0.55;
+  border-radius: 3px 3px 0 0;
+}
+.hb-col.on .hb-bar {
+  opacity: 1;
+}
+.hb-axis {
+  display: flex;
+  gap: 3px;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+.hb-axis span {
+  flex: 1;
+  white-space: nowrap;
+}
+
+/* One whole split into parts. */
+.sb-track {
+  display: flex;
+  height: 16px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--grid);
+  gap: 2px;
+}
+.sb-legend {
+  list-style: none;
+  padding: 0;
+  margin: 14px 0 0;
+  display: grid;
+  gap: 10px;
+  font-size: 15px;
+}
+.sb-legend i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  margin-right: 8px;
+}
+
+/* Small status pills inside tables and cards. */
+.pill.ok {
+  color: var(--cat-3);
+}
+
+/* Working-tree counts: a row of labelled numbers. */
+.wt {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 10px 16px;
+  margin: 0;
+}
+.wt div {
+  display: flex;
+  flex-direction: column;
+}
+.wt dt {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.wt dd {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* "Copy reveal command" button beside a path hash. */
+.copy-btn {
+  margin-left: 8px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--accent);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0 6px;
+  cursor: pointer;
+}
+.copy-btn:hover {
+  border-color: var(--accent);
+}
+
+.pcard-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.pcard-flags .pill {
+  margin-left: 0;
+}
+
+.share-bar {
+  display: inline-block;
+  width: 70px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--grid);
+  margin-right: 8px;
+  vertical-align: middle;
+  overflow: hidden;
+}
+.share-bar span {
+  display: block;
+  height: 100%;
+  background: var(--cat-2);
+}

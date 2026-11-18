@@ -223,8 +223,10 @@ export const getCommits = (name: string, days: number) =>
 
 export function humanDuration(seconds: number): string {
   if (seconds < 60) return `${Math.round(seconds)}s`;
-  const h = Math.floor(seconds / 3600);
-  const m = Math.round((seconds % 3600) / 60);
+  // Round to whole minutes first, so 59.6 minutes becomes the next hour, not "60m".
+  const minutes = Math.round(seconds / 60);
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 

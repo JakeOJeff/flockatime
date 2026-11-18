@@ -51,6 +51,29 @@ function greeting(name: string | null) {
 const slices = (rows: HackatimeSlice[]) =>
   rows.map((r) => ({ name: r.name, seconds: r.total_seconds, percent: r.percent }));
 
+/** Account-wide totals from the snapshot CLI over the selected range. */
+function CliTiles({ projects }: { projects: ProjectRow[] }) {
+  const sum = (f: (p: ProjectRow) => number | null | undefined) => projects.reduce((a, p) => a + (f(p) ?? 0), 0);
+  const added = sum((p) => p.window.lines_added);
+  const removed = sum((p) => p.window.lines_removed);
+  const hasSaves = projects.some((p) => p.window.saves !== null);
+  const uncommitted = sum((p) => (p.git_insertions ?? 0) + (p.git_deletions ?? 0));
+  const dirty = projects.filter((p) => p.git_dirty).length;
+  const active = projects.filter((p) => p.window.snapshots > 0).length;
+  const breaks = sum((p) => p.window.chain_breaks);
+
+  return (
+    <div className="tiles six">
+      <Tile label="Snapshot CLI time" value={humanDuration(sum((p) => p.active_seconds))} sub={`${active} of ${projects.length} projects active`} accent />
+      <Tile label="Lines written" value={`+${num(added)}`} sub={`−${num(removed)} removed`} />
+      <Tile label="Saves" value={hasSaves ? num(sum((p) => p.window.saves)) : '—'} sub={hasSaves ? 'between snapshots' : 'needs agent 0.3'} />
+      <Tile label="Builds · tests" value={`${num(sum((p) => p.window.builds))} · ${num(sum((p) => p.window.tests))}`} sub="output and cache touches" />
+      <Tile label="Uncommitted" value={num(uncommitted)} sub={`lines across ${dirty} dirty repo${dirty === 1 ? '' : 's'}`} />
+      <Tile label="History chain" value={breaks === 0 ? 'Intact' : `${num(breaks)} breaks`} sub="missing or forked snapshots" />
+    </div>
+  );
+}
+
 export function Home({
   user,
   days,
@@ -159,6 +182,8 @@ export function Home({
       )}
       {showHt(source) && ht && ht.configured && ht.error && <div className="card empty">{HT_ERRORS[ht.error]}</div>}
 
+      {showCli(source) && projects && projects.length > 0 && <CliTiles projects={projects} />}
+
       {!ok && compare}
 
       {ok && (
@@ -251,6 +276,9 @@ export function Home({
                           </span>
                         </>
                       )}
+                      {' · '}
+                      +{num(p.window.lines_added)}/−{num(p.window.lines_removed)}
+                      {p.window.saves !== null ? ` · ${num(p.window.saves)} saves` : ''}
                       {' · '}
                       {num(p.total_lines)} lines · {p.captured_at ? clock(p.captured_at) : 'no snapshot'}
                     </span>

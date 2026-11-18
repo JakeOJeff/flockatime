@@ -1,5 +1,16 @@
 import { useEffect, useState } from 'react';
-import { clock, humanDuration, listProjects, type Hackatime, type ProjectRow } from '../api';
+import {
+  ago,
+  clock,
+  humanDuration,
+  listAgents,
+  listProjects,
+  newestVersion,
+  num,
+  type AgentRow,
+  type Hackatime,
+  type ProjectRow,
+} from '../api';
 import { href, type User } from '../App';
 import { KeysCard } from '../ConnectCli';
 import { PageHead, SourceTag } from '../ui';
@@ -39,6 +50,8 @@ export function Settings({ user, ht }: { user: User | null; ht: Hackatime | null
 
       <CliStatus />
 
+      <Agents />
+
       <div className="card">
         <h2>
           Hackatime
@@ -59,6 +72,67 @@ export function Settings({ user, ht }: { user: User | null; ht: Hackatime | null
 
       <KeysCard />
     </>
+  );
+}
+
+/**
+ * Every agent build that reported in the last 30 days, by platform and
+ * version. Agents update themselves from GitHub releases, so one stuck on an
+ * older version usually has auto_update off or cannot reach GitHub.
+ */
+function Agents() {
+  const [agents, setAgents] = useState<AgentRow[] | null>(null);
+  useEffect(() => {
+    listAgents(30)
+      .then((r) => setAgents(r.agents))
+      .catch(() => setAgents([]));
+  }, []);
+  if (!agents || agents.length === 0) return null;
+  const newest = newestVersion(agents.map((a) => a.agent_version));
+
+  return (
+    <div className="card">
+      <h2>
+        Agents reporting
+        <SourceTag source="cli" />
+      </h2>
+      <p className="sub">
+        Each platform and agent version that sent snapshots in the last 30 days. Agents from 0.3 update themselves;
+        one left behind has <code>auto_update = false</code> or cannot reach GitHub — run{' '}
+        <code>snapshot-agent update</code> on it.
+      </p>
+      <div className="scroll-x">
+        <table>
+          <thead>
+            <tr>
+              <th>Platform</th>
+              <th>Version</th>
+              <th>Projects</th>
+              <th>Snapshots</th>
+              <th>Capture time</th>
+              <th>Last heard</th>
+            </tr>
+          </thead>
+          <tbody>
+            {agents.map((a) => (
+              <tr key={`${a.os}:${a.arch}:${a.agent_version}`}>
+                <td>{a.os ? `${a.os}/${a.arch}` : <span className="muted">not reported (before 0.2.2)</span>}</td>
+                <td>
+                  {a.agent_version ?? '—'}
+                  {newest && a.agent_version && a.agent_version !== newest && /^\d/.test(a.agent_version) && (
+                    <span className="pill warn">outdated</span>
+                  )}
+                </td>
+                <td>{num(a.projects)}</td>
+                <td>{num(a.snapshots)}</td>
+                <td>{a.avg_capture_ms !== null ? `${Math.round(a.avg_capture_ms)} ms` : '—'}</td>
+                <td>{ago(a.last_seen)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 

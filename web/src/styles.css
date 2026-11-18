@@ -463,6 +463,26 @@ h1 {
   letter-spacing: -0.02em;
 }
 
+/* Snapshot CLI and Hackatime time side by side, coloured like the source tags. */
+.pcard-times {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 24px;
+}
+
+.pcard-src {
+  font-size: 11px;
+  font-weight: 500;
+}
+.pcard-src.cli,
+.time-cli {
+  color: var(--cat-1);
+}
+.pcard-src.hackatime,
+.time-ht {
+  color: var(--cat-2);
+}
+
 .pcard-meta {
   display: flex;
   flex-wrap: wrap;

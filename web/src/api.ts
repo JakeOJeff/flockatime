@@ -10,6 +10,8 @@ export interface ProjectRow {
   git_dirty: number | null;
   git_ahead: number | null;
   agent_version: string | null;
+  /** Snapshot CLI active time (summed sessions) in the requested window. */
+  active_seconds: number;
 }
 
 export interface SnapshotRow {
@@ -189,7 +191,7 @@ async function get<T>(path: string): Promise<T> {
 export const getMe = () =>
   get<{ auth: boolean; user: { email: string; name: string | null } | null; admin?: boolean }>('/auth/me');
 
-export const listProjects = () => get<{ projects: ProjectRow[] }>('/api/projects');
+export const listProjects = (days = 7) => get<{ projects: ProjectRow[] }>(`/api/projects?days=${days}`);
 
 export const getTimeline = (name: string, days: number) =>
   get<{ snapshots: SnapshotRow[] }>(`/api/projects/${encodeURIComponent(name)}/timeline?days=${days}`);

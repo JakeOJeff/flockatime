@@ -63,7 +63,7 @@ export function Projects(props: Props) {
     let live = true;
     const load = () => {
       if (document.hidden) return;
-      listProjects()
+      listProjects(props.days)
         .then((r) => live && setProjects(r.projects))
         .catch((e) => live && !(e instanceof SignedOutError) && setError(String(e)));
     };
@@ -73,7 +73,7 @@ export function Projects(props: Props) {
       live = false;
       clearInterval(id);
     };
-  }, []);
+  }, [props.days]);
 
   if (error) return <div className="card">Could not load projects: {error}</div>;
   if (projects === null) return null;
@@ -118,11 +118,18 @@ function ProjectList({ projects, ht, days, setDays, source, setSource }: Props &
               return (
                 <a key={p.name} className="pcard" href={href('projects', p.name)}>
                   <div className="pcard-name">{p.name}</div>
-                  {ok && (
-                    <div className="pcard-time" title="Editor time on this project, from Hackatime">
-                      {t === null ? '—' : humanDuration(t)}
+                  <div className="pcard-times">
+                    <div title="Active time in this window, from the snapshot CLI's sessions">
+                      <div className="pcard-time">{humanDuration(p.active_seconds)}</div>
+                      <div className="pcard-src cli">Snapshot CLI</div>
                     </div>
-                  )}
+                    {ok && (
+                      <div title="Editor time on this project in this window, from Hackatime">
+                        <div className="pcard-time">{t === null ? '—' : humanDuration(t)}</div>
+                        <div className="pcard-src hackatime">Hackatime</div>
+                      </div>
+                    )}
+                  </div>
                   <div className="pcard-meta">
                     <span>{num(p.total_lines)} lines</span>
                     <span>{num(p.file_count)} files</span>
@@ -534,7 +541,7 @@ function HackatimeProjects({ ht, projects }: { ht: Hackatime | null; projects: P
   if (ht === null) return <div className="card empty">Loading Hackatime…</div>;
   if (!ht.configured) return <div className="card empty">Hackatime is not connected. See Settings.</div>;
   if (ht.error) return <div className="card empty">{HT_ERRORS[ht.error]}</div>;
-  const cliNames = new Map(projects.map((p) => [p.name.toLowerCase(), p.name]));
+  const cliNames = new Map(projects.map((p) => [p.name.toLowerCase(), p]));
 
   return (
     <div className="card">
@@ -542,7 +549,9 @@ function HackatimeProjects({ ht, projects }: { ht: Hackatime | null; projects: P
         Hackatime projects
         <SourceTag source="hackatime" />
       </h2>
-      <p className="sub">Editor time per project, and whether the snapshot CLI reports a project by that name.</p>
+      <p className="sub">
+        Editor time per project, beside the snapshot CLI's active time for a project by the same name.
+      </p>
       <div className="scroll-x">
         <table>
           <thead>
@@ -550,7 +559,7 @@ function HackatimeProjects({ ht, projects }: { ht: Hackatime | null; projects: P
               <th>Project</th>
               <th>Editor time</th>
               <th>Share</th>
-              <th>Snapshot CLI</th>
+              <th>Snapshot CLI time</th>
             </tr>
           </thead>
           <tbody>
@@ -568,7 +577,13 @@ function HackatimeProjects({ ht, projects }: { ht: Hackatime | null; projects: P
                   <td>{p.name}</td>
                   <td>{humanDuration(p.total_seconds)}</td>
                   <td>{Math.round(p.percent)}%</td>
-                  <td>{match ? <a href={href('projects', match)}>Matched</a> : <span className="muted">Not snapshotted</span>}</td>
+                  <td>
+                    {match ? (
+                      <a href={href('projects', match.name)}>{humanDuration(match.active_seconds)}</a>
+                    ) : (
+                      <span className="muted">Not snapshotted</span>
+                    )}
+                  </td>
                 </tr>
               );
             })}

@@ -28,24 +28,69 @@ async function projectId(env: Env, account: string, name: string): Promise<numbe
   return row?.id ?? null;
 }
 
-/** Every project with the state of its most recent snapshot. */
+/**
+ * Every project with the state of its most recent snapshot, plus its active
+ * time in the window (`days`): the same session sum the project page shows, so
+ * the list can sit beside Hackatime's editor time.
+ */
 api.get('/api/projects', async (c) => {
-  const { results } = await c.env.DB.prepare(
-    `SELECT p.name,
-            s.captured_at, s.received_at, s.file_count, s.total_lines, s.tree_hash,
-            s.git_head, s.git_branch, s.git_dirty, s.git_ahead, s.agent_version
-       FROM projects p
-       LEFT JOIN snapshots s ON s.id = (
-         SELECT id FROM snapshots WHERE project_id = p.id ORDER BY captured_at DESC LIMIT 1
-       )
-      WHERE p.account_id = ?1
-      ORDER BY s.captured_at DESC NULLS LAST`,
-  )
-    .bind(c.get('accountId'))
-    .all();
+  const account = c.get('accountId');
+  const gap = Number(c.env.SESSION_GAP_SECONDS) || 900;
 
-  return c.json({ projects: results });
+  const [{ results }, { results: moves }] = await Promise.all([
+    c.env.DB.prepare(
+      `SELECT p.name,
+              s.captured_at, s.received_at, s.file_count, s.total_lines, s.tree_hash,
+              s.git_head, s.git_branch, s.git_dirty, s.git_ahead, s.agent_version
+         FROM projects p
+         LEFT JOIN snapshots s ON s.id = (
+           SELECT id FROM snapshots WHERE project_id = p.id ORDER BY captured_at DESC LIMIT 1
+         )
+        WHERE p.account_id = ?1
+        ORDER BY s.captured_at DESC NULLS LAST`,
+    )
+      .bind(account)
+      .all<{ name: string }>(),
+    // Only the changed snapshots' times: enough to rebuild sessions per project.
+    c.env.DB.prepare(
+      `SELECT p.name, s.captured_at
+         FROM snapshots s JOIN projects p ON p.id = s.project_id
+        WHERE p.account_id = ?1 AND s.captured_at >= ?2 AND s.unchanged = 0
+        ORDER BY s.project_id, s.captured_at ASC`,
+    )
+      .bind(account, windowStart(c))
+      .all<{ name: string; captured_at: number }>(),
+  ]);
+
+  const times = new Map<string, number[]>();
+  for (const m of moves) {
+    const list = times.get(m.name);
+    if (list) list.push(m.captured_at);
+    else times.set(m.name, [m.captured_at]);
+  }
+
+  return c.json({
+    projects: results.map((p) => ({ ...p, active_seconds: activeSeconds(times.get(p.name) ?? [], gap) })),
+  });
 });
+
+/**
+ * Total session length over ascending capture times of changed snapshots:
+ * split wherever two are more than `gap` apart, each session counted from its
+ * first change to its last. Equal to summing /sessions over the same window.
+ */
+function activeSeconds(times: number[], gap: number): number {
+  if (times.length === 0) return 0;
+  let total = 0;
+  let start = times[0];
+  for (let i = 1; i < times.length; i++) {
+    if (times[i] - times[i - 1] > gap) {
+      total += times[i - 1] - start;
+      start = times[i];
+    }
+  }
+  return total + times[times.length - 1] - start;
+}
 
 /** Raw snapshot rows for charting. One row per tick; summary columns only. */
 api.get('/api/projects/:name/timeline', async (c) => {

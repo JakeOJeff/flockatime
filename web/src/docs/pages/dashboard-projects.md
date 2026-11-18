@@ -48,4 +48,4 @@ The names are path hashes, because the server never sees a path. Map one back wi
 
 ## Hackatime projects
 
-On the projects list, a table shows every Hackatime project in the window, its editor time and share, and whether the agent reports a project with the same name. A mismatch usually means the names differ; see [Hackatime](#/docs/hackatime#matching-projects).
+On the projects list, each card shows the snapshot CLI's active time beside Hackatime's editor time for the selected range, so the two can be compared at a glance. With the source set to Hackatime only, a table shows every Hackatime project in the window, its editor time and share, and the snapshot CLI's active time for a project with the same name. A mismatch usually means the names differ; see [Hackatime](#/docs/hackatime#matching-projects).

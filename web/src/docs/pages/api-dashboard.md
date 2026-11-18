@@ -17,7 +17,7 @@ Who is signed in. Used by the dashboard to decide whether to show the sign-in sc
 
 ## GET /api/projects
 
-Every project with the state of its most recent snapshot: `name`, `captured_at`, `received_at`, `file_count`, `total_lines`, `tree_hash`, the git fields and `agent_version`.
+Every project with the state of its most recent snapshot: `name`, `captured_at`, `received_at`, `file_count`, `total_lines`, `tree_hash`, the git fields and `agent_version`. Also `active_seconds`: its sessions summed over the window, the same number as the project page's Active time. Takes `days` (default 7).
 
 ## GET /api/projects/:name/timeline
 

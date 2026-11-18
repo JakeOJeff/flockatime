@@ -73,10 +73,18 @@ export function Home({
     getHackatime(1)
       .then((r) => setToday(htOk(r)))
       .catch(() => undefined);
-    listProjects()
-      .then((r) => setProjects(r.projects))
-      .catch(() => undefined);
   }, []);
+
+  // Active time follows the range, so it lines up with Hackatime's numbers.
+  useEffect(() => {
+    let live = true;
+    listProjects(days)
+      .then((r) => live && setProjects(r.projects))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [days]);
 
   const ok = showHt(source) ? htOk(ht) : null;
   const latest = projects?.reduce((m, p) => Math.max(m, p.received_at ?? 0), 0) || null;
@@ -193,18 +201,36 @@ export function Home({
             Snapshotted by flockatime
             <SourceTag source="cli" />
           </h2>
-          <p className="sub">Projects the agent is watching. Open one for its lines, churn and sessions.</p>
+          <p className="sub">
+            Projects the agent is watching, with their active time in this range
+            {ok ? ' beside Hackatime’s editor time' : ''}. Open one for its lines, churn and sessions.
+          </p>
           <ul className="plist">
-            {projects.map((p) => (
-              <li key={p.name}>
-                <a href={href('projects', p.name)}>
-                  <span className="rank-name">{p.name}</span>
-                  <span className="muted">
-                    {num(p.total_lines)} lines · {p.captured_at ? clock(p.captured_at) : 'no snapshot'}
-                  </span>
-                </a>
-              </li>
-            ))}
+            {projects.map((p) => {
+              const htp = ok?.projects.find((h) => h.name.toLowerCase() === p.name.toLowerCase());
+              return (
+                <li key={p.name}>
+                  <a href={href('projects', p.name)}>
+                    <span className="rank-name">{p.name}</span>
+                    <span className="muted">
+                      <span className="time-cli" title="Snapshot CLI active time">
+                        {humanDuration(p.active_seconds)}
+                      </span>
+                      {ok && (
+                        <>
+                          {' · '}
+                          <span className="time-ht" title="Hackatime editor time">
+                            {htp ? humanDuration(htp.total_seconds) : '—'}
+                          </span>
+                        </>
+                      )}
+                      {' · '}
+                      {num(p.total_lines)} lines · {p.captured_at ? clock(p.captured_at) : 'no snapshot'}
+                    </span>
+                  </a>
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}

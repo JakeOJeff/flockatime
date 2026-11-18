@@ -164,7 +164,7 @@ async function recordAccount(env: Env, sub: string, email: string, name: string 
     ).bind(sub, email, name, now),
   ];
   if (allowed && isOwner(env, email)) {
-    for (const table of ['api_keys', 'projects', 'trees']) {
+    for (const table of ['api_keys', 'projects', 'trees', 'file_prints']) {
       stmts.push(
         env.DB.prepare(`UPDATE OR IGNORE ${table} SET account_id = ?1 WHERE account_id = ?2`).bind(
           sub,

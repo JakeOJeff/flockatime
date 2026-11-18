@@ -272,6 +272,8 @@ admin.delete('/api/admin/users/:id', async (c) => {
   if (id === (await selfId(c))) return c.json({ error: 'you cannot delete yourself' }, 400);
   const db = c.env.DB;
   await db.batch([
+    db.prepare(`DELETE FROM file_edits WHERE project_id IN (SELECT id FROM projects WHERE account_id = ?1)`).bind(id),
+    db.prepare(`DELETE FROM file_prints WHERE account_id = ?1`).bind(id),
     db.prepare(`DELETE FROM snapshots WHERE project_id IN (SELECT id FROM projects WHERE account_id = ?1)`).bind(id),
     db.prepare(`DELETE FROM projects WHERE account_id = ?1`).bind(id),
     db.prepare(`DELETE FROM trees WHERE account_id = ?1`).bind(id),
@@ -338,6 +340,8 @@ admin.patch('/api/admin/users/:id/projects/:name', async (c) => {
         )
         .bind(from, to, pid),
     );
+    // Fingerprints are per account too; they follow the project.
+    stmts.push(db.prepare(`UPDATE file_prints SET account_id = ?2 WHERE project_id = ?1`).bind(pid, to));
     stmts.push(pruneTrees(c.env, from));
   }
   await db.batch(stmts);
@@ -351,6 +355,8 @@ admin.delete('/api/admin/users/:id/projects/:name', async (c) => {
   if (pid === null) return c.json({ error: 'no such project' }, 404);
   const db = c.env.DB;
   await db.batch([
+    db.prepare(`DELETE FROM file_edits WHERE project_id = ?1`).bind(pid),
+    db.prepare(`DELETE FROM file_prints WHERE project_id = ?1`).bind(pid),
     db.prepare(`DELETE FROM snapshots WHERE project_id = ?1`).bind(pid),
     db.prepare(`DELETE FROM projects WHERE id = ?1`).bind(pid),
     pruneTrees(c.env, account),
@@ -371,6 +377,9 @@ admin.delete('/api/admin/snapshots/:sid', async (c) => {
     .first<{ account_id: string }>();
   if (!owner) return c.json({ error: 'no such snapshot' }, 404);
   await c.env.DB.batch([
+    c.env.DB.prepare(
+      `DELETE FROM file_edits WHERE (project_id, captured_at) IN (SELECT project_id, captured_at FROM snapshots WHERE id = ?1)`,
+    ).bind(sid),
     c.env.DB.prepare(`DELETE FROM snapshots WHERE id = ?1`).bind(sid),
     pruneTrees(c.env, owner.account_id),
   ]);

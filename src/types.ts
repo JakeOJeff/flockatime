@@ -35,7 +35,11 @@ export interface Env {
  */
 export type AppEnv = { Bindings: Env; Variables: { accountId: string } };
 
-/** One file record as the agent sends it. Path is a hash, never the path. */
+/**
+ * One file record as stored in a tree's file list. Path is a hash, never the
+ * path. Only these fields are kept: per-snapshot edits and fingerprints are
+ * split out at ingest, since a tree is shared by every snapshot that reaches it.
+ */
 export interface WireFile {
   path_hash: string;
   content_hash: string;
@@ -44,24 +48,67 @@ export interface WireFile {
   mtime: number;
 }
 
+/** A file's line edits since the previous capture (agent 0.3+). */
+export interface FileEdit {
+  path_hash: string;
+  added: number;
+  removed: number;
+  tail: number;
+  mid: number;
+  lines: number;
+}
+
+/** A changed file's winnowed fingerprints (agent 0.3+). */
+export interface FilePrints {
+  path_hash: string;
+  fps: number[];
+  lines: number;
+}
+
+/** Repository state; everything past `ahead` is counts only (agent 0.2.2+). */
 export interface WireGit {
   head: string;
   branch: string;
   dirty: boolean;
   ahead: number;
+  behind: number | null;
+  staged: number | null;
+  modified: number | null;
+  untracked: number | null;
+  conflicted: number | null;
+  insertions: number | null;
+  deletions: number | null;
+  commits: number | null;
+  last_commit_at: number | null;
+  stashes: number | null;
 }
 
-/** Mirrors snapshot.Snapshot in the agent. The body is always an array of these. */
+/** Mirrors snapshot.Snapshot in the agent, after normalising. The body is always an array of these. */
 export interface WireSnapshot {
   project: string;
   captured_at: number;
   tree_hash: string;
   file_count: number;
   total_lines: number;
+  total_bytes: number | null;
+  skipped_files: number | null;
+  capture_ms: number | null;
+  os: string | null;
+  arch: string | null;
   git?: WireGit;
   files?: WireFile[];
+  /** Files with line edits; empty on a baseline or from an older agent. */
+  edits: FileEdit[];
+  /** Files with fingerprints. */
+  prints: FilePrints[];
   unchanged?: boolean;
   agent_version: string;
+  seq: number | null;
+  prev: string | null;
+  /** Seconds after the previous capture at which a file was saved. */
+  saves: number[] | null;
+  build_at: number | null;
+  test_at: number | null;
 }
 
 export interface TreeDiff {

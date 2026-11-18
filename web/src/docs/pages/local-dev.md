@@ -50,6 +50,26 @@ On Windows:
 $env:SNAPSHOT_AGENT_CONFIG = "./loop.toml"; snapshot-agent run
 ```
 
+## Sample data
+
+To fill the charts without running an agent, seed three weeks of made-up snapshots for a few `sample-*` projects:
+
+```sh
+node scripts/seed-local.mjs > seed.sql
+npx wrangler d1 execute flockatime --local --file=./seed.sql && rm seed.sql
+```
+
+Re-running replaces the sample projects and leaves real ones alone. Only ever run it with `--local`.
+
+## Local Hackatime
+
+With `REQUIRE_AUTH=false` you count as the owner, so add one of these to `.dev.vars` and restart `npm run dev`:
+
+```ini
+HACKATIME_USER=your_username     # public stats only
+HACKATIME_API_KEY=...            # or your key from ~/.wakatime.cfg
+```
+
 ## Hot reload
 
 For dashboard work, run the Worker and Vite side by side:

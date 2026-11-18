@@ -5,3 +5,4 @@ web/dist/
 key.sql
 *.log
 .DS_Store
+seed.sql

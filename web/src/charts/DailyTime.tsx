@@ -22,6 +22,12 @@ function barPath(x: number, w: number, base: number, top: number): string {
   return `M${x},${base} L${x},${top + r} Q${x},${top} ${x + r},${top} L${x + w - r},${top} Q${x + w},${top} ${x + w},${top + r} L${x + w},${base} Z`;
 }
 
+/** A round top for the axis: whole hours past an hour, half hours below. */
+const niceMax = (s: number) => (s > 3600 ? Math.ceil(s / 7200) * 7200 : Math.ceil(s / 1800) * 1800);
+
+/** How many evenly spaced dates the detail axis labels. */
+const TICKS = 5;
+
 /**
  * Time per day, one bar per series side by side. Both series are durations on
  * the same axis, so they share one scale — never a second y-axis.
@@ -34,10 +40,16 @@ export function DailyTime({
   days,
   series,
   overview,
+  mark,
+  legend = true,
 }: {
   days: string[];
   series: TimeSeries[];
   overview?: boolean;
+  /** False when the card header already names the series. */
+  legend?: boolean;
+  /** One day to call out on the axis, e.g. the only day a source saw anything. */
+  mark?: { day: string; label: string };
 }) {
   const PAD = overview ? OVERVIEW_PAD : DETAIL_PAD;
   const HEIGHT = overview ? 210 : DETAIL_HEIGHT;
@@ -51,7 +63,8 @@ export function DailyTime({
     const w = width - PAD.left - PAD.right;
     const h = HEIGHT - PAD.top - PAD.bottom;
     const band = w / days.length;
-    const max = Math.max(...series.flatMap((s) => days.map((d) => s.values.get(d) ?? 0)), 60);
+    const peak = Math.max(...series.flatMap((s) => days.map((d) => s.values.get(d) ?? 0)), 60);
+    const max = overview ? peak : niceMax(peak);
     const base = PAD.top + h;
     // The overview leaves a fifth of each day empty on either side.
     const inset = overview ? band * 0.1 : 0;
@@ -67,8 +80,17 @@ export function DailyTime({
       }),
     }));
 
-    return { groups, band, max, base, h };
-  }, [days, series, width, overview, PAD, HEIGHT]);
+    // Evenly spaced dates, dropping any that would crowd the marked day.
+    const at = (i: number) => PAD.left + i * band + band / 2;
+    const markIdx = mark ? days.indexOf(mark.day) : -1;
+    const n = Math.min(TICKS, days.length);
+    const ticks = [...new Set(Array.from({ length: n }, (_, k) => Math.round((k * (days.length - 1)) / Math.max(1, n - 1))))]
+      .filter((i) => markIdx < 0 || Math.abs(at(i) - at(markIdx)) > 90)
+      .map((i) => ({ i, text: dayLabel(days[i]) }));
+    if (mark && markIdx >= 0) ticks.push({ i: markIdx, text: `${dayLabel(mark.day)} · ${mark.label}` });
+
+    return { groups, band, max, base, h, ticks, at };
+  }, [days, series, width, overview, PAD, HEIGHT, mark]);
 
   const active = plot && hover !== null ? plot.groups[hover] : null;
 
@@ -90,7 +112,7 @@ export function DailyTime({
               setHover(idx >= 0 && idx < plot.groups.length ? idx : null);
             }}
           >
-            {!overview && [0.5, 1].map((f) => (
+            {!overview && [0, 0.5, 1].map((f) => (
               <g key={f}>
                 <line
                   x1={PAD.left}
@@ -106,7 +128,7 @@ export function DailyTime({
                   fontSize={11}
                   fill="var(--text-muted)"
                 >
-                  {hours(plot.max * f)}
+                  {f === 0 ? '0' : hours(plot.max * f)}
                 </text>
               </g>
             ))}
@@ -131,14 +153,23 @@ export function DailyTime({
                 </text>
               ))
             ) : (
-              <>
-                <text x={PAD.left} y={HEIGHT - 6} fontSize={11} fill="var(--text-muted)">
-                  {dayLabel(days[0])}
-                </text>
-                <text x={width - PAD.right} y={HEIGHT - 6} fontSize={11} textAnchor="end" fill="var(--text-muted)">
-                  {dayLabel(days[days.length - 1])}
-                </text>
-              </>
+              plot.ticks.map((t) => {
+                // The end labels hug the plot edges instead of overhanging them.
+                const first = t.i === 0;
+                const last = t.i === days.length - 1;
+                return (
+                  <text
+                    key={t.i}
+                    x={first ? PAD.left : last ? width - PAD.right : plot.at(t.i)}
+                    y={HEIGHT - 6}
+                    fontSize={11}
+                    textAnchor={first ? 'start' : last ? 'end' : 'middle'}
+                    fill="var(--text-muted)"
+                  >
+                    {t.text}
+                  </text>
+                );
+              })
             )}
           </svg>
 
@@ -160,7 +191,7 @@ export function DailyTime({
             </div>
           )}
 
-          {series.length > 1 && !overview && (
+          {series.length > 1 && !overview && legend && (
             <div className="legend">
               {series.map((s) => (
                 <span className="key" key={s.label}>

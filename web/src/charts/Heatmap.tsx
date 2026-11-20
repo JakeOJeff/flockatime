@@ -15,7 +15,8 @@ const hourLabel = (h: number) =>
  * cell's tint of --series-1 over the surface); empty cells stay the plain grid
  * color so "nothing" never reads as "a little".
  */
-export function Heatmap({ cells }: { cells: RhythmCell[] }) {
+/** `compact` fits a half-width card: smaller cells, each cell's numbers in its tooltip. */
+export function Heatmap({ cells, compact }: { cells: RhythmCell[]; compact?: boolean }) {
   const [hover, setHover] = useState<RhythmCell | null>(null);
 
   const byKey = new Map(cells.map((c) => [`${c.dow}:${c.hour}`, c]));
@@ -24,7 +25,7 @@ export function Heatmap({ cells }: { cells: RhythmCell[] }) {
   if (cells.length === 0) return <div className="empty">No tree movement in this window.</div>;
 
   return (
-    <div className="heatmap">
+    <div className={compact ? 'heatmap compact' : 'heatmap'}>
       <div className="hm-grid" onMouseLeave={() => setHover(null)}>
         {ORDER.map((dow) => (
           <div className="hm-row" key={dow}>
@@ -42,6 +43,13 @@ export function Heatmap({ cells }: { cells: RhythmCell[] }) {
                       ? `color-mix(in oklab, var(--series-1) ${pct}%, var(--surface-1))`
                       : 'var(--grid)',
                   }}
+                  title={
+                    compact
+                      ? `${DAYS[dow]} ${hourLabel(hour)}: ${num(cell?.active_ticks ?? 0)} active ticks, ${num(
+                          cell?.lines_moved ?? 0,
+                        )} lines moved`
+                      : undefined
+                  }
                   onMouseEnter={() => setHover(cell ?? { dow, hour, active_ticks: 0, lines_moved: 0 })}
                 />
               );
@@ -57,13 +65,13 @@ export function Heatmap({ cells }: { cells: RhythmCell[] }) {
           ))}
         </div>
       </div>
-      <div className="hm-readout muted">
+      {!compact && <div className="hm-readout muted">
         {hover
           ? `${DAYS[hover.dow]} ${hourLabel(hover.hour)} — ${num(hover.active_ticks)} active ticks, ${num(
               hover.lines_moved,
             )} lines moved`
           : 'Hover a cell for its numbers. Darker = more snapshots where the tree moved.'}
-      </div>
+      </div>}
     </div>
   );
 }

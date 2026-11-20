@@ -18,7 +18,7 @@ Work through these in order:
 4. **Is the agent running?** See [The agent is not running](#the-agent-is-not-running).
 5. **Did you wait?** With the standard two-minute interval, a project can take a couple of minutes to appear.
 
-Use the **Snapshot CLI only** [data source](#/docs/data-sources) and the status card in [Settings](#/settings) to see what the server has received.
+The **Snapshot CLI** card and **Your machines** in [Settings](#/settings) show what the server has received, and from which machine.
 
 ## The install command failed
 
@@ -74,7 +74,7 @@ Saves, true line counts, the history chain, builds and tests, and shared code ne
 snapshot-agent update
 ```
 
-If **Settings → Agents reporting** still flags a machine as outdated, it has `auto_update = false` or `SNAPSHOT_AGENT_NO_UPDATE` set, or cannot reach GitHub. Running the install command again also upgrades it.
+If **Settings → Your machines** still flags a machine for *update*, it has `auto_update = false` or `SNAPSHOT_AGENT_NO_UPDATE` set, or cannot reach GitHub. Running the install command again also upgrades it.
 
 ## Line counts are missing after upgrading
 

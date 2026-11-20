@@ -8,15 +8,29 @@ Panels marked "needs agent 0.3" fill in once the machine runs snapshot-agent 0.3
 
 ## The projects list
 
-Each card shows the snapshot CLI's active time beside Hackatime's editor time for the selected range, the line and file count, the branch, lines added and removed, saves and builds in the range. Small flags call out what needs attention:
+One row per repo snapshot-agent has seen, for the selected range (**7 days**, **30 days** or **All time**):
 
-| Flag | Meaning |
+| Column | Meaning |
+|---|---|
+| Repo | Name, branch, line and file count |
+| Snapshot | Time snapshot-agent saw the files changing |
+| Hackatime | Hackatime editor time for a project with the same name |
+| Captured | Snapshot time as a share of Hackatime time |
+| Lines changed | Lines added and removed |
+| Status | What needs attention, or *all good* |
+| Last snapshot | When the latest one was captured |
+
+Click a column heading to sort by it. Search filters by name or branch; **Dirty** and **Outdated agent** show only those repos. The total at the top right is snapshot time over Hackatime time for the listed repos.
+
+| Status | Meaning |
 |---|---|
 | conflict | Files are in a merge conflict |
-| N uncommitted | Lines changed against HEAD but not committed |
+| dirty | Uncommitted changes (hover for the line count) |
 | N behind | Commits behind the upstream branch |
-| N chain breaks | Snapshots missing, forked or restarted in the range |
-| agent X.Y.Z | This project's agent is older than the newest one reporting to your account |
+| N breaks | Snapshots missing, forked or restarted in the range |
+| X.Y.Z | This repo's agent is older than the newest one reporting to your account |
+
+When a repo reports an older agent, a strip under the table says which version and links to the machine in [Settings](#/settings). **Only in Hackatime** below lists Hackatime projects snapshot-agent has never seen.
 
 ## Tiles
 

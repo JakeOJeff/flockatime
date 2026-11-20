@@ -63,6 +63,10 @@ Saves per local hour of day (`hours`, 24 counts) and the `total` in the window. 
 
 Files in the project sharing at least two fingerprints with another file of the same account: `path_hash`, `prints`, `shared`, and the other file's `other_project` and `other_path_hash`. The 50 with the largest share, plus `files_fingerprinted` and `files_compared`.
 
+## GET /api/daily
+
+Snapshot CLI active time per local day across every project: `daily`, a list of `{day, seconds}` for days with any. Sessions are cut as in `/api/projects`, so the days add up to its `active_seconds`. Takes `days` (default 14) and `tz`.
+
 ## GET /api/agents
 
 One row per OS, CPU and agent version that sent snapshots in the window (default 30 days), with `projects`, `snapshots`, `last_seen` and `avg_capture_ms`.
@@ -75,7 +79,7 @@ Your Hackatime stats for the window: totals, streak, languages, projects, editor
 
 | Route | Does |
 |---|---|
-| `GET /api/keys` | Your keys, active first |
+| `GET /api/keys` | Your keys, active first, each with what its machine sent: `snapshots`, `repos`, the `os`, `arch` and `agent_version` of its latest snapshot, `last_snapshot`, and `daily` (snapshots per local day over the last 30 days, oldest first). Takes `tz` |
 | `POST /api/keys` | Mint a key. Body `{"label": "…"}`. Returns `201 {"token": "flk_…"}`, the only time the token is shown |
 | `DELETE /api/keys/:id` | Revoke a key. Body `{}` |
 

@@ -38,11 +38,11 @@ import { Churn } from '../charts/Churn';
 import { DailyTime } from '../charts/DailyTime';
 import { Heatmap } from '../charts/Heatmap';
 import { HourBars, SplitBar } from '../charts/HourBars';
-import { InstallCard } from '../ConnectCli';
 import {
   Filter,
   PageHead,
   RangeFilter,
+  RangePills,
   SourceFilter,
   SourceTag,
   Tile,
@@ -95,100 +95,236 @@ export function Projects(props: Props) {
   );
 }
 
-function ProjectList({ projects, ht, days, setDays, source, setSource }: Props & { projects: ProjectRow[] }) {
-  const ok = showHt(source) ? htOk(ht) : null;
-  const htTime = (name: string) =>
-    ok?.projects.find((p) => p.name.toLowerCase() === name.toLowerCase())?.total_seconds ?? null;
+type SortKey = 'cli' | 'ht' | 'lines' | 'last';
+
+/** Last snapshot: a date, with the time when it is recent enough to matter. */
+const lastSnap = (unix: number | null) => {
+  if (!unix) return 'never';
+  const d = new Date(unix * 1000);
+  const recent = Date.now() / 1000 - unix < 7 * 86400;
+  return recent
+    ? d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+    : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+};
+
+/** Agents from 0.3 update themselves; older ones need a manual update. */
+const canSelfUpdate = (v: string) => {
+  const [a, b] = v.split('.').map(Number);
+  return a > 0 || b >= 3;
+};
+
+function ProjectList({ projects, ht, days, setDays }: Props & { projects: ProjectRow[] }) {
+  const [query, setQuery] = useState('');
+  const [onlyDirty, setOnlyDirty] = useState(false);
+  const [onlyOutdated, setOnlyOutdated] = useState(false);
+  const ok = htOk(ht);
+  // Until a column is picked, sort by Hackatime once it has loaded.
+  const [picked, setSort] = useState<SortKey | null>(null);
+  const sort: SortKey = picked ?? (ok ? 'ht' : 'cli');
+
+  const htTime = useMemo(() => {
+    const m = new Map((ok?.projects ?? []).map((p) => [p.name.toLowerCase(), p.total_seconds]));
+    return (name: string) => m.get(name.toLowerCase()) ?? null;
+  }, [ok]);
   const newest = newestVersion(projects.map((p) => p.agent_version));
+  const outdated = (p: ProjectRow) =>
+    !!(newest && p.agent_version && p.agent_version !== newest && /^\d/.test(p.agent_version));
+  const dirtyCount = projects.filter((p) => p.git_dirty).length;
+  const outdatedRows = projects.filter(outdated);
+
+  const rows = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const key: Record<SortKey, (p: ProjectRow) => number> = {
+      cli: (p) => p.active_seconds,
+      ht: (p) => htTime(p.name) ?? -1,
+      lines: (p) => (p.window.lines_added ?? 0) + (p.window.lines_removed ?? 0),
+      last: (p) => p.captured_at ?? 0,
+    };
+    return projects
+      .filter((p) => !q || p.name.toLowerCase().includes(q) || (p.git_branch ?? '').toLowerCase().includes(q))
+      .filter((p) => !onlyDirty || p.git_dirty)
+      .filter((p) => !onlyOutdated || outdated(p))
+      .sort((a, b) => key[sort](b) - key[sort](a) || b.active_seconds - a.active_seconds);
+  }, [projects, query, onlyDirty, onlyOutdated, sort, htTime, newest]);
+
+  const cliTotal = projects.reduce((a, p) => a + p.active_seconds, 0);
+  const htTotal = projects.reduce((a, p) => a + (htTime(p.name) ?? 0), 0);
+  const oldVersions = [...new Set(outdatedRows.map((p) => p.agent_version as string))];
+
+  const head = (
+    <PageHead title="Projects" aside={<RangePills days={days} onChange={setDays} />}>
+      <p className="lede">Every git repo snapshot-agent has seen. Click one for lines, churn and sessions.</p>
+    </PageHead>
+  );
+
+  if (projects.length === 0) {
+    return (
+      <>
+        {head}
+        <div className="card">
+          <h2>No repos yet</h2>
+          <p className="sub">
+            Nothing has arrived from snapshot-agent. <a href={href('extensions')}>Set it up</a> on the machine you
+            code on and your repos appear here as you edit them.
+          </p>
+        </div>
+        <HackatimeProjects ht={ht} projects={projects} />
+      </>
+    );
+  }
+
+  const SortTh = ({ k, label, className }: { k: SortKey; label: string; className?: string }) => (
+    <th className={className} aria-sort={sort === k ? 'descending' : undefined}>
+      <button onClick={() => setSort(k)}>
+        {label}
+        {sort === k ? ' ↓' : ''}
+      </button>
+    </th>
+  );
 
   return (
     <>
-      <PageHead eyebrow="flockatime" title="Projects">
-        <p className="lede">Every git repo the agent has snapshotted. Open one for its lines, churn and sessions.</p>
-      </PageHead>
+      {head}
 
-      {source === 'hackatime' ? (
-        <>
-          <div className="filters">
-            <RangeFilter days={days} onChange={setDays} />
-            <SourceFilter source={source} onChange={setSource} />
-          </div>
-          <HackatimeProjects ht={ht} projects={projects} />
-        </>
-      ) : projects.length === 0 ? (
-        <InstallCard intro />
-      ) : (
-        <>
-          <div className="filters">
-            <RangeFilter days={days} onChange={setDays} />
-            <SourceFilter source={source} onChange={setSource} />
-          </div>
-          <div className="pgrid">
-            {projects.map((p) => {
-              const t = htTime(p.name);
-              return (
-                <a key={p.name} className="pcard" href={href('projects', p.name)}>
-                  <div className="pcard-name">{p.name}</div>
-                  <div className="pcard-times">
-                    <div title="Active time in this window, from the snapshot CLI's sessions">
-                      <div className="pcard-time">{humanDuration(p.active_seconds)}</div>
-                      <div className="pcard-src cli">Snapshot CLI</div>
-                    </div>
-                    {ok && (
-                      <div title="Editor time on this project in this window, from Hackatime">
-                        <div className="pcard-time">{t === null ? '—' : humanDuration(t)}</div>
-                        <div className="pcard-src hackatime">Hackatime</div>
+      <div className="toolbar">
+        <input
+          className="search"
+          type="search"
+          placeholder="Search repos…"
+          aria-label="Search repos"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        {dirtyCount > 0 && (
+          <button className="chip" aria-pressed={onlyDirty} onClick={() => setOnlyDirty(!onlyDirty)}>
+            Dirty<b>{dirtyCount}</b>
+          </button>
+        )}
+        {outdatedRows.length > 0 && (
+          <button className="chip warn" aria-pressed={onlyOutdated} onClick={() => setOnlyOutdated(!onlyOutdated)}>
+            Outdated agent<b>{outdatedRows.length}</b>
+          </button>
+        )}
+        <span className="total">
+          <b className="cli">{humanDuration(cliTotal)}</b> captured
+          {ok && (
+            <>
+              {' '}
+              of <b className="ht">{humanDuration(htTotal)}</b>
+            </>
+          )}
+        </span>
+      </div>
+
+      <div className="card flush">
+        <div className="scroll-x">
+          <table className="ptable">
+            <thead>
+              <tr>
+                <th>Repo</th>
+                <SortTh k="cli" label="Snapshot" className="cli" />
+                {ok && <SortTh k="ht" label="Hackatime" className="ht" />}
+                {ok && <th className="left">Captured</th>}
+                <SortTh k="lines" label="Lines changed" />
+                <th className="left">Status</th>
+                <SortTh k="last" label="Last snapshot" />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="muted">
+                    No repos match.
+                  </td>
+                </tr>
+              )}
+              {rows.map((p) => {
+                const t = htTime(p.name);
+                const share = t ? Math.min(1, p.active_seconds / t) : null;
+                return (
+                  <tr key={p.name} onClick={() => (location.hash = href('projects', p.name))}>
+                    <td>
+                      <div className="repo">
+                        <a href={href('projects', p.name)} onClick={(e) => e.stopPropagation()}>
+                          {p.name}
+                        </a>
                       </div>
+                      <div className="repo-sub">
+                        {[p.git_branch, p.total_lines !== null && `${num(p.total_lines)} lines`, p.file_count !== null && `${num(p.file_count)} files`]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </div>
+                    </td>
+                    <td className="cli">{humanDuration(p.active_seconds)}</td>
+                    {ok && <td className={t === null ? 'muted' : 'ht'}>{t === null ? '—' : humanDuration(t)}</td>}
+                    {ok && (
+                      <td className="left">
+                        {share === null ? (
+                          <span className="muted small">not in Hackatime</span>
+                        ) : (
+                          <div className="cap" title="Share of Hackatime's time snapshot-agent saw files changing">
+                            <div className="cap-track">
+                              <span style={{ width: `${share * 100}%` }} />
+                            </div>
+                            <span className="cap-pct">{Math.round(share * 100)}%</span>
+                          </div>
+                        )}
+                      </td>
                     )}
-                  </div>
-                  <div className="pcard-meta">
-                    <span>{num(p.total_lines)} lines</span>
-                    <span>{num(p.file_count)} files</span>
-                    <span>{p.git_branch ?? 'no branch'}</span>
-                  </div>
-                  <div className="pcard-meta">
-                    <span title="Lines added and removed in this window">
-                      +{num(p.window.lines_added)} / −{num(p.window.lines_removed)}
-                    </span>
-                    {p.window.saves !== null && <span>{num(p.window.saves)} saves</span>}
-                    {p.window.builds > 0 && <span>{num(p.window.builds)} builds</span>}
-                  </div>
-                  <ProjectFlags p={p} newest={newest} />
-                  <div className="pcard-foot">
-                    {p.captured_at ? `Last snapshot ${clock(p.captured_at)}` : 'Waiting for the first snapshot'}
-                  </div>
-                </a>
-              );
-            })}
+                    <td>
+                      <span className="add">+{num(p.window.lines_added)}</span>
+                      <span className="rem">−{num(p.window.lines_removed)}</span>
+                    </td>
+                    <td className="left">
+                      <Status p={p} outdated={outdated(p)} />
+                    </td>
+                    <td className="when">{lastSnap(p.captured_at)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {outdatedRows.length > 0 && (
+          <div className="card-foot warn">
+            <span>
+              {outdatedRows.length} repo{outdatedRows.length === 1 ? '' : 's'} last reported from agent{' '}
+              {oldVersions.join(', ')}
+              {oldVersions.every((v) => !canSelfUpdate(v)) ? ', which can’t update itself' : ', which hasn’t updated itself'}
+              . Run <span className="kbd-cmd">snapshot-agent update</span> on that machine.
+            </span>
+            <a href={href('settings')}>Show machine →</a>
           </div>
-        </>
-      )}
+        )}
+      </div>
+
+      <HackatimeProjects ht={ht} projects={projects} />
     </>
   );
 }
 
-/** What needs attention on a project, from its latest snapshot and this window. */
-function ProjectFlags({ p, newest }: { p: ProjectRow; newest: string | null }) {
-  const uncommitted = (p.git_insertions ?? 0) + (p.git_deletions ?? 0);
+/** What needs attention on a repo, from its latest snapshot and this window. */
+function Status({ p, outdated }: { p: ProjectRow; outdated: boolean }) {
   const flags: [string, string, string][] = [];
   if ((p.git_conflicted ?? 0) > 0) flags.push(['bad', 'conflict', 'Files in merge conflict']);
-  if (uncommitted > 0)
-    flags.push(['muted-pill', `${num(uncommitted)} uncommitted`, 'Lines changed against HEAD, not yet committed']);
-  else if (p.git_dirty) flags.push(['muted-pill', 'dirty', 'Uncommitted changes']);
+  if (p.git_dirty) {
+    const n = (p.git_insertions ?? 0) + (p.git_deletions ?? 0);
+    flags.push(['muted-pill', 'dirty', n ? `${num(n)} uncommitted lines` : 'Uncommitted changes']);
+  }
   if ((p.git_behind ?? 0) > 0) flags.push(['muted-pill', `${p.git_behind} behind`, 'Commits behind upstream']);
   if (p.window.chain_breaks > 0)
-    flags.push(['warn', `${p.window.chain_breaks} chain break${p.window.chain_breaks === 1 ? '' : 's'}`, 'Snapshots missing, forked or restarted']);
-  if (newest && p.agent_version && p.agent_version !== newest)
-    flags.push(['warn', `agent ${p.agent_version}`, `Older than ${newest}, the newest agent reporting here`]);
-  if (flags.length === 0) return null;
+    flags.push(['warn', `${p.window.chain_breaks} break${p.window.chain_breaks === 1 ? '' : 's'}`, 'Snapshots missing, forked or restarted']);
+  if (outdated && p.agent_version) flags.push(['warn', p.agent_version, 'Older than the newest agent reporting here']);
+  if (flags.length === 0) return <span className="pill ok">all good</span>;
   return (
-    <div className="pcard-flags">
+    <>
       {flags.map(([cls, text, title]) => (
         <span key={text} className={`pill ${cls}`} title={title}>
           {text}
         </span>
       ))}
-    </div>
+    </>
   );
 }
 
@@ -307,7 +443,7 @@ function ProjectDetail({
     if (ok) {
       out.push({
         label: 'Editor time (Hackatime, all projects)',
-        color: 'var(--cat-2)',
+        color: 'var(--ht)',
         values: new Map(ok.daily.map((d) => [d.day, d.seconds])),
       });
     }
@@ -952,63 +1088,45 @@ function Integrity({
 }
 
 /**
- * Hackatime's own project list, beside whether the snapshot CLI knows a
- * project by the same name. Hackatime and the CLI are matched by name only, so
- * a project missing on one side here is why its tile reads "—" on the other.
+ * Hackatime projects snapshot-agent has never seen, so the two lists together
+ * cover everything Home counts. Matched by name only: a repo whose folder name
+ * differs from its Hackatime project shows up here too.
  */
 function HackatimeProjects({ ht, projects }: { ht: Hackatime | null; projects: ProjectRow[] }) {
-  if (ht === null) return <div className="card empty">Loading Hackatime…</div>;
-  if (!ht.configured) return <div className="card empty">Hackatime is not connected. See Settings.</div>;
-  if (ht.error) return <div className="card empty">{HT_ERRORS[ht.error]}</div>;
-  const cliNames = new Map(projects.map((p) => [p.name.toLowerCase(), p]));
+  const ok = htOk(ht);
+  if (ht && ht.configured && ht.error) return <div className="card"><p className="sub">{HT_ERRORS[ht.error]}</p></div>;
+  if (!ok) return null;
+  const known = new Set(projects.map((p) => p.name.toLowerCase()));
+  const only = ok.projects.filter((p) => !known.has(p.name.toLowerCase()));
+  if (only.length === 0) return null;
 
   return (
-    <div className="card">
-      <h2>
-        Hackatime projects
-        <SourceTag source="hackatime" />
-      </h2>
-      <p className="sub">
-        Editor time per project, beside the snapshot CLI's active time for a project by the same name.
-      </p>
-      <div className="scroll-x">
+    <details className="card">
+      <summary className="card-head" style={{ cursor: 'pointer', marginBottom: 0 }}>
+        <h2>Only in Hackatime</h2>
+        <span className="src-tag hackatime">{num(only.length)} projects</span>
+        <span className="meta">snapshot-agent hasn’t seen these repos</span>
+      </summary>
+      <div className="scroll-x" style={{ marginTop: 16 }}>
         <table>
           <thead>
             <tr>
               <th>Project</th>
               <th>Editor time</th>
               <th>Share</th>
-              <th>Snapshot CLI time</th>
             </tr>
           </thead>
           <tbody>
-            {ht.projects.length === 0 && (
-              <tr>
-                <td colSpan={4} className="muted">
-                  Nothing recorded in this window.
-                </td>
+            {only.map((p) => (
+              <tr key={p.name}>
+                <td>{p.name}</td>
+                <td>{humanDuration(p.total_seconds)}</td>
+                <td className="muted">{Math.round(p.percent)}%</td>
               </tr>
-            )}
-            {ht.projects.map((p) => {
-              const match = cliNames.get(p.name.toLowerCase());
-              return (
-                <tr key={p.name}>
-                  <td>{p.name}</td>
-                  <td>{humanDuration(p.total_seconds)}</td>
-                  <td>{Math.round(p.percent)}%</td>
-                  <td>
-                    {match ? (
-                      <a href={href('projects', match.name)}>{humanDuration(match.active_seconds)}</a>
-                    ) : (
-                      <span className="muted">Not snapshotted</span>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
+            ))}
           </tbody>
         </table>
       </div>
-    </div>
+    </details>
   );
 }

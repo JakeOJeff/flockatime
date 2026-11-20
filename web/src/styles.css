@@ -3191,3 +3191,170 @@ tr.fold td {
 .health dd {
   white-space: nowrap;
 }
+
+/* ---------- project detail ---------- */
+
+/* Branch and short sha beside the repo name. */
+.head-ref {
+  display: inline-block;
+  margin-left: 14px;
+  padding: 3px 10px;
+  border-radius: 8px;
+  background: var(--raise);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0;
+  color: var(--text-secondary);
+  vertical-align: 8px;
+}
+
+.head-dirty {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 12px;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--text-muted);
+  vertical-align: 8px;
+}
+
+.head-dirty::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ht);
+}
+
+.statrow .ht .value {
+  color: var(--ht);
+}
+
+.statrow .cli .value {
+  color: var(--cli);
+}
+
+.banner .copy-cmd {
+  margin-left: auto;
+}
+
+.copy-cmd {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.copy-cmd .kbd-cmd {
+  padding: 7px 12px;
+}
+
+/* Sessions beside the heatmap: the table needs the wider column. */
+@media (min-width: 1000px) {
+  .grid-2.wide-left {
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  }
+}
+
+.stable td {
+  vertical-align: top;
+}
+
+.stable .s-when {
+  font-weight: 700;
+}
+
+.stable .s-head {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  white-space: normal;
+  max-width: 260px;
+}
+
+.stable .s-head code {
+  font-family: var(--mono);
+  color: var(--text-secondary);
+}
+
+.card > .link-btn {
+  margin-top: 12px;
+  font-size: 14px;
+}
+
+.heatmap.compact .hm-grid {
+  min-width: 0;
+}
+
+.heatmap.compact .hm-row {
+  grid-template-columns: 30px repeat(24, minmax(0, 1fr));
+}
+
+.heatmap.compact .hm-cell {
+  max-height: 14px;
+}
+
+.heatmap.compact .hm-day,
+.heatmap.compact .hm-hour {
+  font-size: 11px;
+}
+
+/* What an older agent leaves empty: dashed tiles, one per missing panel. */
+.unlocks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.unlocks li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 16px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.unlocks b {
+  font-size: 14.5px;
+}
+
+.unlocks span {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* A card that opens on its header. */
+details.disclosure > summary {
+  cursor: pointer;
+  list-style: none;
+  margin-bottom: 0;
+}
+
+details.disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+details.disclosure > summary h2::before {
+  content: '▸';
+  display: inline-block;
+  width: 1em;
+  transition: transform 0.15s;
+}
+
+details.disclosure[open] > summary {
+  margin-bottom: 18px;
+}
+
+details.disclosure[open] > summary h2::before {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  details.disclosure > summary h2::before {
+    transition: none;
+  }
+}

@@ -5,6 +5,7 @@ import {
   admin,
   bytes,
   clock,
+  newestVersion,
   num,
   shortSha,
   type AccessRow,
@@ -17,7 +18,7 @@ import {
   type ViewAs,
 } from '../api';
 import { href, type ViewAsFn } from '../App';
-import { PageHead, Tile } from '../ui';
+import { PageHead, Pills } from '../ui';
 
 const message = (e: unknown) => (e instanceof SignedOutError ? null : e instanceof Error ? e.message : String(e));
 
@@ -25,6 +26,61 @@ const when = (t: number | null | undefined) => (t ? clock(t) : '—');
 
 /** What to call an account in a list: name, else email, else its raw id. */
 const labelOf = (u: { id: string; name: string | null; email: string | null }) => u.name ?? u.email ?? u.id;
+
+const initial = (s: string) => s.trim().charAt(0).toUpperCase() || '?';
+
+/** A row of headline numbers in one card, split by hairlines. */
+function StatRow({ cells }: { cells: { label: string; value: string; sub?: string }[] }) {
+  return (
+    <div className="statrow">
+      {cells.map((c) => (
+        <div key={c.label}>
+          <div className="label">{c.label}</div>
+          <div className="value" title={c.value}>
+            {c.value}
+          </div>
+          {c.sub && <div className="sub">{c.sub}</div>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** A "⋯" button opening a short list of actions. Closes after one is picked. */
+function Menu({ label, items }: { label: string; items: { text: string; danger?: boolean; run: () => void }[] }) {
+  return (
+    <details className="menu">
+      <summary aria-label={label} title={label}>
+        ⋯
+      </summary>
+      <div className="menu-list" role="menu">
+        {items.map((i) => (
+          <button
+            key={i.text}
+            role="menuitem"
+            className={i.danger ? 'danger' : undefined}
+            onClick={(e) => {
+              (e.currentTarget.closest('details') as HTMLDetailsElement).open = false;
+              i.run();
+            }}
+          >
+            {i.text}
+          </button>
+        ))}
+      </div>
+    </details>
+  );
+}
+
+function Switch({ checked, onChange, children }: { checked: boolean; onChange: (v: boolean) => void; children: React.ReactNode }) {
+  return (
+    <label className="switch">
+      <input type="checkbox" role="switch" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      <span aria-hidden />
+      {children}
+    </label>
+  );
+}
 
 /**
  * Every account on the deployment (`#/admin`) or one of them in full
@@ -47,6 +103,14 @@ export function Admin({
   );
 }
 
+/** Gives an id that only has data (no account row) an email, so someone can sign in to it. */
+async function createRow(id: string): Promise<boolean> {
+  const email = prompt(`Email for "${id}"? Whoever signs in with it gets this account's data.`)?.trim();
+  if (!email) return false;
+  await admin.updateUser(id, { email });
+  return true;
+}
+
 /* ---------- the account list ---------- */
 
 function AdminHome({ viewAs, onViewAs }: { viewAs: ViewAs | null; onViewAs: ViewAsFn }) {
@@ -65,12 +129,22 @@ function AdminHome({ viewAs, onViewAs }: { viewAs: ViewAs | null; onViewAs: View
   useEffect(load, []);
 
   const waiting = users?.filter((u) => u.email && !u.role && u.last_login && !u.disabled_at).length ?? 0;
+  // Data recorded under an id nobody can sign in as.
+  const orphans = users?.filter((u) => !u.email && (u.projects > 0 || u.active_keys > 0)) ?? [];
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
     if (!users || !needle) return users;
     return users.filter((u) => [u.id, u.email, u.name].some((v) => v?.toLowerCase().includes(needle)));
   }, [users, q]);
+
+  const makeRow = async (id: string) => {
+    try {
+      if (await createRow(id)) load();
+    } catch (e) {
+      setError(message(e));
+    }
+  };
 
   return (
     <>
@@ -79,46 +153,66 @@ function AdminHome({ viewAs, onViewAs }: { viewAs: ViewAs | null; onViewAs: View
       </PageHead>
 
       {viewAs && (
-        <div className="notice">
-          You are still viewing the dashboard as <strong>{labelOf(viewAs)}</strong>.{' '}
-          <button className="link-btn plain" onClick={() => onViewAs(null, 'admin')}>
+        <div className="banner">
+          <span>
+            You are still viewing the dashboard as <strong>{labelOf(viewAs)}</strong>.
+          </span>
+          <button className="btn-secondary" style={{ marginTop: 0 }} onClick={() => onViewAs(null, 'admin')}>
             Stop
           </button>
         </div>
       )}
       {error && <p className="signin-error">{error}</p>}
 
-      {waiting > 0 && (
-        <div className="notice">
-          {waiting} {waiting === 1 ? 'person has' : 'people have'} signed in without being on the list. They are
-          marked <strong>Wants access</strong> below.
-        </div>
-      )}
-
       {overview && (
-        <div className="tiles six">
-          <Tile
-            label="Accounts"
-            value={num(overview.accounts)}
-            sub={overview.disabled ? `${overview.disabled} disabled` : undefined}
-            accent
-          />
-          <Tile label="Active today" value={num(overview.active_24h)} sub="sent a snapshot in 24h" />
-          <Tile label="Projects" value={num(overview.projects)} />
-          <Tile label="Snapshots" value={num(overview.snapshots)} sub={`${num(overview.snapshots_24h)} in 24h`} />
-          <Tile label="Active keys" value={num(overview.active_keys)} />
-          <Tile label="Stored file lists" value={bytes(overview.stored_bytes)} sub={`${num(overview.trees)} trees`} />
+        <StatRow
+          cells={[
+            { label: 'Accounts', value: num(overview.accounts), sub: overview.disabled ? `${overview.disabled} disabled` : undefined },
+            { label: 'Active today', value: num(overview.active_24h), sub: 'sent a snapshot in 24h' },
+            { label: 'Projects', value: num(overview.projects) },
+            { label: 'Snapshots', value: num(overview.snapshots), sub: `${num(overview.snapshots_24h)} in 24h` },
+            { label: 'Active keys', value: num(overview.active_keys) },
+            { label: 'Stored file lists', value: bytes(overview.stored_bytes), sub: `${num(overview.trees)} trees` },
+          ]}
+        />
+      )}
+
+      {orphans.map((u) => (
+        <div className="banner" key={u.id}>
+          <strong>
+            {overview && overview.accounts === 0 ? '0 accounts, but ' : ''}
+            {num(u.projects)} project{u.projects === 1 ? '' : 's'} and {num(u.active_keys)} key
+            {u.active_keys === 1 ? '' : 's'}
+          </strong>
+          <span>
+            belong to “{u.id}”, which has no account row. Make it an account so someone can sign in to it.
+          </span>
+          <button className="btn-lime" onClick={() => makeRow(u.id)}>
+            Create account for {u.id}
+          </button>
+        </div>
+      ))}
+
+      {waiting > 0 && (
+        <div className="banner">
+          <span>
+            {waiting} {waiting === 1 ? 'person has' : 'people have'} signed in without being on the list. They are
+            marked <strong>Wants access</strong> below.
+          </span>
         </div>
       )}
 
-      <div className="card">
-        <h2>Accounts</h2>
-        <p className="sub">Open one to inspect everything it has sent, or view the dashboard as them.</p>
-        <div className="filters">
+      <div className="card flush">
+        <div className="flush-head">
+          <div>
+            <h2>Accounts</h2>
+            <p>Open one to see everything it has sent, or view the dashboard as them.</p>
+          </div>
           <input
-            className="input"
+            className="search"
             type="search"
             placeholder="Search name, email or id"
+            aria-label="Search accounts"
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
@@ -129,7 +223,7 @@ function AdminHome({ viewAs, onViewAs }: { viewAs: ViewAs | null; onViewAs: View
           <div className="empty">No accounts match.</div>
         ) : (
           <div className="scroll-x">
-            <table>
+            <table className="atable">
               <thead>
                 <tr>
                   <th>Account</th>
@@ -138,45 +232,61 @@ function AdminHome({ viewAs, onViewAs }: { viewAs: ViewAs | null; onViewAs: View
                   <th>Keys</th>
                   <th>Last snapshot</th>
                   <th>Last sign-in</th>
-                  <th />
+                  <th>
+                    <span className="sr-only">Actions</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((u) => (
-                  <tr key={u.id} className="row-link" onClick={() => (location.hash = href('admin', u.id))}>
+                  <tr key={u.id}>
                     <td>
-                      <a href={href('admin', u.id)} onClick={(e) => e.stopPropagation()}>
-                        {labelOf(u)}
-                      </a>
-                      {u.name && u.email && <div className="muted small">{u.email}</div>}
-                      {!u.email && <div className="muted small">no account row · {u.id}</div>}
+                      <div className="who">
+                        <span className="avatar sm" aria-hidden>
+                          {initial(labelOf(u))}
+                        </span>
+                        <div>
+                          <a className="who-name" href={href('admin', u.id)}>
+                            {labelOf(u)}
+                          </a>
+                          {!u.email && <span className="pill warn">no account row</span>}
+                          {u.role === 'admin' && <span className="pill admin">Admin</span>}
+                          {u.disabled_at ? <span className="pill bad">Disabled</span> : null}
+                          {u.email && !u.role && !u.last_login && <span className="pill muted-pill">No access</span>}
+                          {u.email && !u.role && u.last_login ? (
+                            <>
+                              <span className="pill warn" title="Signed in but is not on the list">
+                                Wants access
+                              </span>
+                              <button
+                                className="link-btn plain let-in"
+                                onClick={() => access.set(u.email!, 'user').then(load, (err) => setError(message(err)))}
+                              >
+                                Let in
+                              </button>
+                            </>
+                          ) : null}
+                          {u.name && u.email && <div className="who-sub">{u.email}</div>}
+                        </div>
+                      </div>
                     </td>
                     <td>{num(u.projects)}</td>
                     <td>{num(u.snapshots)}</td>
                     <td>{num(u.active_keys)}</td>
                     <td>{when(u.last_received)}</td>
-                    <td>{u.last_login ? clock(u.last_login) : 'never'}</td>
+                    <td className="muted">{u.last_login ? clock(u.last_login) : 'never'}</td>
                     <td>
-                      {u.role === 'admin' && <span className="pill">Admin</span>}
-                      {u.email && !u.role && (u.last_login ? (
-                        <>
-                          <span className="pill warn" title="Signed in but is not on the list">
-                            Wants access
-                          </span>
-                          <button
-                            className="link-btn plain let-in"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              access.set(u.email!, 'user').then(load, (err) => setError(message(err)));
-                            }}
-                          >
-                            Let in
-                          </button>
-                        </>
-                      ) : (
-                        <span className="pill muted-pill">No access</span>
-                      ))}
-                      {u.disabled_at ? <span className="pill bad">Disabled</span> : null}
+                      <div className="row-actions">
+                        <a className="btn-secondary sm" href={href('admin', u.id)}>
+                          Inspect
+                        </a>
+                        <button
+                          className="btn-secondary sm"
+                          onClick={() => onViewAs({ id: u.id, name: u.name, email: u.email })}
+                        >
+                          View as
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -186,8 +296,10 @@ function AdminHome({ viewAs, onViewAs }: { viewAs: ViewAs | null; onViewAs: View
         )}
       </div>
 
-      <AccessCard onChange={load} />
-      <NewAccount onCreated={load} />
+      <div className="admin-grid">
+        <AccessCard onChange={load} />
+        <NewAccount onCreated={load} />
+      </div>
     </>
   );
 }
@@ -240,86 +352,89 @@ function AccessCard({ onChange }: { onChange: () => void }) {
           .map((e) => ({ entry: e, role: 'user' as Role })),
       ]
     : [];
+  const kind = (e: string) => (e.startsWith('@') ? 'Everyone at this domain' : 'One person');
 
   return (
     <div className="card">
       <h2>Who can sign in</h2>
       <p className="sub">
-        Add an email to let that person sign in, or an <code>@domain</code> to let everyone at that exact domain in.
-        Admins get this page; only a single email can be admin. Removing someone locks them out on their next
-        request, agents included.
+        Add an email for one person, or <strong>@domain</strong> for everyone at that exact domain. Removing someone
+        locks them and their agents out on the next request.
       </p>
 
-      <form className="form-row" onSubmit={add}>
+      <form className="access-form" onSubmit={add}>
         <input
-          className="input"
+          className="field"
           required
           placeholder="name@example.com or @example.com"
+          aria-label="Email or @domain"
           value={entry}
           onChange={(e) => setEntry(e.target.value)}
         />
-        <select value={role} onChange={(e) => setRole(e.target.value as Role)}>
-          <option value="user">Can sign in</option>
-          <option value="admin">Admin</option>
-        </select>
-        <button className="btn-secondary">Add</button>
+        <div className="seg">
+          <Pills
+            label="Role"
+            value={entry.startsWith('@') ? 'user' : role}
+            options={[
+              { value: 'user', label: 'Can sign in' },
+              ...(entry.startsWith('@') ? [] : [{ value: 'admin' as Role, label: 'Admin' }]),
+            ]}
+            onChange={setRole}
+          />
+        </div>
+        <button className="btn-lime">Add</button>
       </form>
       {error && <p className="signin-error">{error}</p>}
 
       {data && (
-        <div className="scroll-x">
-          <table>
-            <thead>
-              <tr>
-                <th>Email or domain</th>
-                <th>Role</th>
-                <th>Added</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {data.entries.map((a) => (
-                <tr key={a.entry}>
-                  <td>{a.entry}</td>
-                  <td>
-                    {a.entry.startsWith('@') ? (
-                      'Can sign in'
-                    ) : (
-                      <select value={a.role} onChange={(e) => run(() => access.set(a.entry, e.target.value as Role))}>
-                        <option value="user">Can sign in</option>
-                        <option value="admin">Admin</option>
-                      </select>
-                    )}
-                  </td>
-                  <td>
-                    {clock(a.created_at)}
-                    {a.added_by && <div className="muted small">by {a.added_by}</div>}
-                  </td>
-                  <td>
-                    <button
-                      className="link-btn"
-                      onClick={() =>
-                        confirm(`Remove ${a.entry}? Anyone it lets in is signed out and their agents stop.`) &&
-                        run(() => access.remove(a.entry))
-                      }
-                    >
-                      Remove
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {fixed.map((a) => (
-                <tr key={`cfg:${a.entry}`} className="dim">
-                  <td>{a.entry}</td>
-                  <td>{a.role === 'admin' ? 'Admin' : 'Can sign in'}</td>
-                  <td>wrangler.jsonc</td>
-                  <td title="Set in wrangler.jsonc; change it there and redeploy">fixed</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ul className="access-list">
+          {data.entries.map((a) => (
+            <li key={a.entry}>
+              <div>
+                <b>{a.entry}</b>
+                <div className="who-sub">
+                  {kind(a.entry)} · added {clock(a.created_at)}
+                  {a.added_by ? ` by ${a.added_by}` : ''}
+                </div>
+              </div>
+              {a.entry.startsWith('@') ? (
+                <span className="pill muted-pill">Can sign in</span>
+              ) : (
+                <select
+                  aria-label={`Role for ${a.entry}`}
+                  value={a.role}
+                  onChange={(e) => run(() => access.set(a.entry, e.target.value as Role))}
+                >
+                  <option value="user">Can sign in</option>
+                  <option value="admin">Admin</option>
+                </select>
+              )}
+              <button
+                className="link-btn"
+                onClick={() =>
+                  confirm(`Remove ${a.entry}? Anyone it lets in is signed out and their agents stop.`) &&
+                  run(() => access.remove(a.entry))
+                }
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+          {fixed.map((a) => (
+            <li key={`cfg:${a.entry}`}>
+              <div>
+                <b>{a.entry}</b>
+                <div className="who-sub">{kind(a.entry)} · set in wrangler.jsonc</div>
+              </div>
+              {a.role === 'admin' ? <span className="pill admin">Admin</span> : <span className="pill muted-pill">Can sign in</span>}
+              <span className="fixed" title="Set in wrangler.jsonc; change it there and redeploy">
+                🔒 fixed
+              </span>
+            </li>
+          ))}
+        </ul>
       )}
+      <p className="foot-note">Only one email can be admin. Entries from wrangler.jsonc can only be changed there.</p>
     </div>
   );
 }
@@ -362,43 +477,39 @@ function AccountAccess({ email, onChange }: { email: string; onChange: () => voi
         : null;
 
   return (
-    <>
-      <dl className="facts">
-        <dt>Access</dt>
-        <dd>
-          {label}
-          {why && <div className="muted small">{why}</div>}
-        </dd>
-      </dl>
-      <div className="btn-row">
+    <div className="access-strip">
+      <div>
+        <span className="kicker">Sign-in access</span>{' '}
+        <span className={`pill ${state.role === 'admin' ? 'admin' : state.role ? 'ok' : 'bad'}`}>{label}</span>
+        {why && <div className="who-sub">{why}</div>}
+      </div>
+      <div className="row-actions">
         {!state.role && (
-          <button className="btn-secondary inline ghost" onClick={() => run(() => access.set(email, 'user'))}>
+          <button className="btn-secondary sm" onClick={() => run(() => access.set(email, 'user'))}>
             Let them sign in
           </button>
         )}
         {state.role !== 'admin' && (
-          <button className="btn-secondary inline ghost" onClick={() => run(() => access.set(email, 'admin'))}>
+          <button className="btn-secondary sm" onClick={() => run(() => access.set(email, 'admin'))}>
             Make admin
           </button>
         )}
         {state.role === 'admin' && state.entry?.role === 'admin' && (
-          <button className="btn-secondary inline ghost" onClick={() => run(() => access.set(email, 'user'))}>
+          <button className="btn-secondary sm" onClick={() => run(() => access.set(email, 'user'))}>
             Remove admin
           </button>
         )}
         {state.entry && (
           <button
-            className="btn-secondary inline ghost"
-            onClick={() =>
-              confirm(`Remove ${email} from the sign-in list?`) && run(() => access.remove(email))
-            }
+            className="btn-secondary sm"
+            onClick={() => confirm(`Remove ${email} from the sign-in list?`) && run(() => access.remove(email))}
           >
-            Remove from sign-in list
+            Remove from list
           </button>
         )}
       </div>
       {error && <p className="signin-error">{error}</p>}
-    </>
+    </div>
   );
 }
 
@@ -432,20 +543,28 @@ function NewAccount({ onCreated }: { onCreated: () => void }) {
   return (
     <div className="card">
       <h2>Add an account</h2>
-      <p className="sub">
-        With their Hack Club Auth id, this is the account they land in when they sign in, so you can set up keys
-        or move projects to them first. Without one, it gets a made-up id nobody can sign in as.
-      </p>
-      <form className="form-row" onSubmit={submit}>
-        <input className="input" type="email" required placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
-        <input className="input" placeholder="Name (optional)" value={name} onChange={(e) => setName(e.target.value)} />
-        <input className="input" placeholder="Hack Club Auth id (optional)" value={id} onChange={(e) => setId(e.target.value)} />
-        <label className="check">
-          <input type="checkbox" checked={allow} onChange={(e) => setAllow(e.target.checked)} /> Let them sign in
-        </label>
-        <button className="btn-secondary" disabled={busy}>
-          {busy ? 'Adding…' : 'Add account'}
-        </button>
+      <p className="sub">Set up keys or move projects to someone before their first sign-in.</p>
+      <form className="stack-form" onSubmit={submit}>
+        <input className="field" type="email" required placeholder="Email" aria-label="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <input className="field" placeholder="Name (optional)" aria-label="Name" value={name} onChange={(e) => setName(e.target.value)} />
+        <div>
+          <input
+            className="field"
+            placeholder="Hack Club Auth id (optional)"
+            aria-label="Hack Club Auth id"
+            value={id}
+            onChange={(e) => setId(e.target.value)}
+          />
+          <p className="hint">Without it, they get a made-up id nobody can sign in as.</p>
+        </div>
+        <div className="form-end">
+          <Switch checked={allow} onChange={setAllow}>
+            Let them sign in
+          </Switch>
+          <button className="btn-lime" disabled={busy}>
+            {busy ? 'Adding…' : 'Add account'}
+          </button>
+        </div>
       </form>
       {error && <p className="signin-error">{error}</p>}
     </div>
@@ -457,6 +576,7 @@ function NewAccount({ onCreated }: { onCreated: () => void }) {
 function AdminAccount({ id, onViewAs }: { id: string; onViewAs: ViewAsFn }) {
   const [data, setData] = useState<AdminUser | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
   // Bumped after any write so the snapshot log reloads with the rest.
   const [rev, setRev] = useState(0);
 
@@ -470,6 +590,7 @@ function AdminAccount({ id, onViewAs }: { id: string; onViewAs: ViewAsFn }) {
       .catch((e) => setError(message(e)));
   useEffect(() => {
     setData(null);
+    setEditing(false);
     load();
   }, [id]);
 
@@ -502,39 +623,80 @@ function AdminAccount({ id, onViewAs }: { id: string; onViewAs: ViewAsFn }) {
   const a = data.account;
   const t = data.totals;
   const viewAs: ViewAs = { id, name: a?.name ?? null, email: a?.email ?? null };
+  const title = a ? labelOf({ id, name: a.name, email: a.email }) : id;
+  const liveKeys = data.keys.filter((k) => !k.revoked_at);
+  const latest = data.projects.reduce<(typeof data.projects)[number] | null>(
+    (m, p) => ((p.received_at ?? 0) > (m?.received_at ?? 0) ? p : m),
+    null,
+  );
+  const lastAt = t?.last_received ? new Date(t.last_received * 1000) : null;
 
   return (
     <>
       <a className="back" href={href('admin')}>
         ← All accounts
       </a>
-      <PageHead eyebrow="Admin · account" title={a ? labelOf({ id, name: a.name, email: a.email }) : id}>
-        <p className="lede">
-          {a?.email ?? 'No account row: data recorded under this id with no sign-in attached.'}
-          {a?.disabled_at ? <span className="pill bad">Disabled {clock(a.disabled_at)}</span> : null}
-        </p>
-        <div className="btn-row">
-          <button className="btn-secondary inline" onClick={() => onViewAs(viewAs)}>
+
+      <header className="acct-head">
+        <span className="avatar lg" aria-hidden>
+          {initial(title)}
+        </span>
+        <div className="acct-text">
+          <h1>
+            {title}
+            {!a && <span className="pill warn">no account row</span>}
+            {a?.disabled_at ? <span className="pill bad">Disabled {clock(a.disabled_at)}</span> : null}
+          </h1>
+          <p className="lede">
+            {a ? (a.name ? `${a.email} · ` : '') : 'Data recorded under this id with no sign-in attached. '}
+            {t?.first_seen ? `First snapshot ${clock(t.first_seen)}` : 'No snapshots yet'}
+            {' · '}
+            {a?.last_login ? `last signed in ${clock(a.last_login)}` : 'never signed in'}.
+          </p>
+        </div>
+        <div className="row-actions">
+          <button className="btn-secondary" style={{ marginTop: 0 }} onClick={() => setEditing(!editing)}>
+            {a ? 'Edit profile' : 'Create account row'}
+          </button>
+          <button className="btn-lime" onClick={() => onViewAs(viewAs)}>
             View dashboard as them
           </button>
         </div>
-      </PageHead>
+      </header>
 
       {error && <p className="signin-error">{error}</p>}
+      {editing && <ProfileForm id={id} data={data} act={act} done={() => setEditing(false)} />}
+      {a?.email && <AccountAccess email={a.email} onChange={() => act(async () => undefined)} />}
 
-      <div className="tiles six">
-        <Tile label="Projects" value={num(data.projects.length)} accent />
-        <Tile label="Snapshots" value={num(t?.snapshots)} sub={`${num(t?.snapshots_7d)} in the last 7 days`} />
-        <Tile label="Lines added" value={num(t?.lines_added)} sub={`${num(t?.lines_removed)} removed`} />
-        <Tile label="Active keys" value={num(data.keys.filter((k) => !k.revoked_at).length)} />
-        <Tile label="Last snapshot" value={t?.last_received ? clock(t.last_received) : '—'} />
-        <Tile label="Stored" value={bytes(t?.stored_bytes)} sub={`${num(t?.trees)} trees`} />
+      <StatRow
+        cells={[
+          { label: 'Projects', value: num(data.projects.length) },
+          { label: 'Snapshots', value: num(t?.snapshots), sub: `${num(t?.snapshots_7d)} in 7 days` },
+          { label: 'Lines added', value: num(t?.lines_added), sub: `${num(t?.lines_removed)} removed` },
+          {
+            label: 'Active keys',
+            value: num(liveKeys.length),
+            sub: (() => {
+              const unused = liveKeys.filter((k) => !k.last_used).length;
+              return unused ? `${unused} never used` : undefined;
+            })(),
+          },
+          {
+            label: 'Last snapshot',
+            value: lastAt ? lastAt.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—',
+            sub: lastAt
+              ? `${lastAt.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}${latest ? ` · ${latest.name}` : ''}`
+              : undefined,
+          },
+          { label: 'Stored', value: bytes(t?.stored_bytes), sub: `${num(t?.trees)} trees` },
+        ]}
+      />
+
+      <div className="admin-grid wide-left">
+        <ProjectsCard id={id} data={data} act={act} onViewAs={(p) => onViewAs(viewAs, 'projects', p)} />
+        <KeysAdmin id={id} keys={data.keys} act={act} />
       </div>
-
-      <Profile id={id} data={data} act={act} />
-      <ProjectsCard id={id} data={data} act={act} onViewAs={(p) => onViewAs(viewAs, 'projects', p)} />
-      <KeysAdmin id={id} keys={data.keys} act={act} />
-      <SnapshotLog id={id} projects={data.projects.map((p) => p.name)} rev={rev} act={act} />
+      <SnapshotLog id={id} data={data} rev={rev} act={act} />
       <DangerZone id={id} data={data} act={act} />
     </>
   );
@@ -542,57 +704,32 @@ function AdminAccount({ id, onViewAs }: { id: string; onViewAs: ViewAsFn }) {
 
 type Act = (fn: () => Promise<unknown>) => Promise<void>;
 
-function Profile({ id, data, act }: { id: string; data: AdminUser; act: Act }) {
+function ProfileForm({ id, data, act, done }: { id: string; data: AdminUser; act: Act; done: () => void }) {
   const a = data.account;
-  const [editing, setEditing] = useState(false);
   const [email, setEmail] = useState(a?.email ?? '');
   const [name, setName] = useState(a?.name ?? '');
-
-  useEffect(() => {
-    setEmail(a?.email ?? '');
-    setName(a?.name ?? '');
-  }, [a?.email, a?.name]);
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     await act(() => admin.updateUser(id, { email, name }));
-    setEditing(false);
+    done();
   };
 
   return (
     <div className="card">
-      <h2>Profile</h2>
-      {editing ? (
-        <form className="form-row" onSubmit={save}>
-          <input className="input" type="email" required placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
-          <input className="input" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
-          <button className="btn-secondary">Save</button>
-          <button type="button" className="btn-secondary ghost" onClick={() => setEditing(false)}>
-            Cancel
-          </button>
-        </form>
-      ) : (
-        <>
-          <dl className="facts">
-            <dt>Account id</dt>
-            <dd className="mono">{id}</dd>
-            <dt>Name</dt>
-            <dd>{a?.name ?? '—'}</dd>
-            <dt>Email</dt>
-            <dd>{a?.email ?? '—'}</dd>
-            <dt>Created</dt>
-            <dd>{when(a?.created_at)}</dd>
-            <dt>Last sign-in</dt>
-            <dd>{a?.last_login ? clock(a.last_login) : 'never'}</dd>
-            <dt>First snapshot</dt>
-            <dd>{when(data.totals?.first_seen)}</dd>
-          </dl>
-          {a?.email && <AccountAccess email={a.email} onChange={() => act(async () => undefined)} />}
-          <button className="btn-secondary inline ghost" onClick={() => setEditing(true)}>
-            {a ? 'Edit profile' : 'Create account row'}
-          </button>
-        </>
-      )}
+      <h2>{a ? 'Edit profile' : 'Create account row'}</h2>
+      <p className="sub">
+        Account id <span className="mono">{id}</span>
+        {a ? ` · created ${when(a.created_at)}` : '. Whoever signs in with this email gets this data.'}
+      </p>
+      <form className="form-row" onSubmit={save}>
+        <input className="field" type="email" required placeholder="Email" aria-label="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <input className="field" placeholder="Name" aria-label="Name" value={name} onChange={(e) => setName(e.target.value)} />
+        <button className="btn-lime">Save</button>
+        <button type="button" className="btn-secondary" style={{ marginTop: 0 }} onClick={done}>
+          Cancel
+        </button>
+      </form>
     </div>
   );
 }
@@ -621,55 +758,67 @@ function ProjectsCard({
       act(() => admin.deleteProject(id, name));
     }
   };
+  const newest = newestVersion(data.projects.map((p) => p.agent_version));
 
   return (
     <div className="card">
-      <h2>Projects</h2>
-      <p className="sub">Open one to see its charts as they do.</p>
+      <div className="card-head">
+        <h2>Projects</h2>
+        <span className="muted small">Open one to see its charts as they do. ⋯ to rename, move or delete.</span>
+      </div>
       {data.projects.length === 0 ? (
         <div className="empty">No projects.</div>
       ) : (
         <div className="scroll-x">
-          <table>
+          <table className="compact">
             <thead>
               <tr>
                 <th>Project</th>
                 <th>Snapshots</th>
                 <th>Lines</th>
                 <th>Files</th>
-                <th>Branch</th>
-                <th>Agent</th>
+                <th className="left">Branch</th>
+                <th className="left">Agent</th>
                 <th>Last snapshot</th>
-                <th />
+                <th>
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
             </thead>
             <tbody>
               {data.projects.map((p) => (
                 <tr key={p.name}>
                   <td>
-                    <button className="link-btn plain" onClick={() => onViewAs(p.name)}>
+                    <button className="link-btn plain strong" onClick={() => onViewAs(p.name)}>
                       {p.name}
                     </button>
                   </td>
-                  <td>{num(p.snapshots)}</td>
+                  <td className="strong">{num(p.snapshots)}</td>
                   <td>{num(p.total_lines)}</td>
-                  <td>{num(p.file_count)}</td>
-                  <td>
+                  <td className="muted">{num(p.file_count)}</td>
+                  <td className="left">
                     {p.git_branch ?? '—'}
                     {p.git_dirty ? <span className="dot" title="Uncommitted changes" /> : null}
                   </td>
-                  <td>{p.agent_version ?? '—'}</td>
-                  <td>{when(p.captured_at)}</td>
-                  <td className="actions">
-                    <button className="link-btn plain" onClick={() => rename(p.name)}>
-                      Rename
-                    </button>
-                    <button className="link-btn plain" onClick={() => move(p.name)}>
-                      Move
-                    </button>
-                    <button className="link-btn" onClick={() => remove(p.name, p.snapshots)}>
-                      Delete
-                    </button>
+                  <td className="left">
+                    {newest && p.agent_version && p.agent_version !== newest ? (
+                      <span className="pill warn" style={{ marginLeft: 0 }}>
+                        {p.agent_version}
+                      </span>
+                    ) : (
+                      p.agent_version ?? '—'
+                    )}
+                  </td>
+                  <td className="muted small">{when(p.captured_at)}</td>
+                  <td>
+                    <Menu
+                      label={`Actions for ${p.name}`}
+                      items={[
+                        { text: 'Rename', run: () => rename(p.name) },
+                        { text: 'Move to another account', run: () => move(p.name) },
+                        { text: 'Delete', danger: true, run: () => remove(p.name, p.snapshots) },
+                      ]}
+                    />
                   </td>
                 </tr>
               ))}
@@ -702,12 +851,20 @@ function KeysAdmin({ id, keys, act }: { id: string; keys: ApiKeyRow[]; act: Act 
 
   return (
     <div className="card">
-      <h2>Agent keys</h2>
+      <div className="card-head">
+        <h2>Agent keys</h2>
+        <span className="meta">
+          <button className="btn-lime sm" onClick={mint}>
+            Mint a key
+          </button>
+        </span>
+      </div>
       <p className="sub">Every key this account has minted, revoked ones included.</p>
       {error && <p className="signin-error">{error}</p>}
       {token && (
-        <div className="notice">
-          New key, shown once: <code className="mono">{token}</code>{' '}
+        <div className="well" style={{ marginTop: 0, marginBottom: 12 }}>
+          <span>New key, shown once:</span>
+          <code className="mono">{token}</code>
           <button className="chip" onClick={() => navigator.clipboard?.writeText(token)}>
             Copy
           </button>
@@ -716,80 +873,77 @@ function KeysAdmin({ id, keys, act }: { id: string; keys: ApiKeyRow[]; act: Act 
       {keys.length === 0 ? (
         <div className="empty">No keys.</div>
       ) : (
-        <div className="scroll-x">
-          <table>
-            <thead>
-              <tr>
-                <th>Key</th>
-                <th>Created</th>
-                <th>Last used</th>
-                <th>Status</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {keys.map((k) => (
-                <tr key={k.id} className={k.revoked_at ? 'dim' : undefined}>
-                  <td>
-                    {k.label ?? '—'}
-                    <div className="muted small mono">{k.id.slice(0, 12)}…</div>
-                  </td>
-                  <td>{clock(k.created_at)}</td>
-                  <td>{k.last_used ? clock(k.last_used) : 'never'}</td>
-                  <td>{k.revoked_at ? `Revoked ${clock(k.revoked_at)}` : 'Active'}</td>
-                  <td className="actions">
-                    <button className="link-btn plain" onClick={() => rename(k)}>
-                      Rename
-                    </button>
-                    {k.revoked_at ? (
-                      <button className="link-btn plain" onClick={() => act(() => admin.updateKey(k.id, { revoked: false }))}>
-                        Restore
-                      </button>
-                    ) : (
-                      <button
-                        className="link-btn"
-                        onClick={() =>
+        <ul className="key-list">
+          {keys.map((k) => (
+            <li key={k.id} className={k.revoked_at ? 'revoked' : undefined}>
+              <div className="key-main">
+                <div>
+                  <b>{k.label ?? 'Unnamed'}</b>
+                  {k.revoked_at ? (
+                    <span className="pill bad">revoked</span>
+                  ) : k.last_used ? (
+                    <span className="pill ok">active</span>
+                  ) : (
+                    <span className="pill muted-pill">never used</span>
+                  )}
+                </div>
+                <div className="who-sub">
+                  <span className="mono">{k.id.slice(0, 12)}…</span> · made {clock(k.created_at)}
+                </div>
+              </div>
+              <div className="key-used">
+                <span>{k.revoked_at ? 'revoked' : 'used'}</span>
+                {k.revoked_at ? clock(k.revoked_at) : k.last_used ? clock(k.last_used) : 'never'}
+              </div>
+              <Menu
+                label={`Actions for ${k.label ?? 'key'}`}
+                items={[
+                  { text: 'Rename', run: () => rename(k) },
+                  k.revoked_at
+                    ? { text: 'Restore', run: () => act(() => admin.updateKey(k.id, { revoked: false })) }
+                    : {
+                        text: 'Revoke',
+                        danger: true,
+                        run: () =>
                           confirm(`Revoke "${k.label ?? 'key'}"? Its agent stops sending.`) &&
-                          act(() => admin.updateKey(k.id, { revoked: true }))
-                        }
-                      >
-                        Revoke
-                      </button>
-                    )}
-                    <button
-                      className="link-btn"
-                      onClick={() =>
-                        confirm(`Delete "${k.label ?? 'key'}" for good?`) && act(() => admin.deleteKey(k.id))
-                      }
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                          act(() => admin.updateKey(k.id, { revoked: true })),
+                      },
+                  {
+                    text: 'Delete',
+                    danger: true,
+                    run: () => confirm(`Delete "${k.label ?? 'key'}" for good?`) && act(() => admin.deleteKey(k.id)),
+                  },
+                ]}
+              />
+            </li>
+          ))}
+        </ul>
       )}
-      <button className="btn-secondary inline" onClick={mint}>
-        Mint a key for them
-      </button>
     </div>
   );
 }
 
 const PAGE = 100;
+const PROJECT_PILLS = 4;
+/** Past this, a snapshot sat in the offline queue; worth showing its received time. */
+const LAG_SECONDS = 120;
+
+type LogItem = { kind: 'row'; s: AdminSnapshotRow } | { kind: 'fold'; key: string; rows: AdminSnapshotRow[] };
 
 /** Everything their agents sent, newest first, a page at a time. */
-function SnapshotLog({ id, projects, rev, act }: { id: string; projects: string[]; rev: number; act: Act }) {
+function SnapshotLog({ id, data, rev, act }: { id: string; data: AdminUser; rev: number; act: Act }) {
   const [project, setProject] = useState('');
   const [rows, setRows] = useState<AdminSnapshotRow[] | null>(null);
   const [more, setMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hideUnchanged, setHideUnchanged] = useState(true);
+  const [allPills, setAllPills] = useState(false);
+  const [open, setOpen] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let live = true;
     setRows(null);
+    setOpen(new Set());
     admin
       .snapshots(id, { project: project || undefined, limit: PAGE })
       .then((r) => {
@@ -815,24 +969,113 @@ function SnapshotLog({ id, projects, rev, act }: { id: string; projects: string[
       .catch((e) => setError(message(e)));
   };
 
-  const signed = (n: number | null) => (n === null ? '—' : n > 0 ? `+${num(n)}` : num(n));
+  // Runs of unchanged ticks fold into one line each.
+  const items = useMemo<LogItem[]>(() => {
+    if (!rows) return [];
+    if (!hideUnchanged) return rows.map((s) => ({ kind: 'row', s }));
+    const out: LogItem[] = [];
+    for (const s of rows) {
+      const prev = out[out.length - 1];
+      if (s.unchanged && prev?.kind === 'fold' && prev.rows[0].project === s.project) prev.rows.push(s);
+      else if (s.unchanged) out.push({ kind: 'fold', key: `f${s.id}`, rows: [s] });
+      else out.push({ kind: 'row', s });
+    }
+    return out;
+  }, [rows, hideUnchanged]);
+
+  const lagged = rows?.some((s) => s.received_at - s.captured_at > LAG_SECONDS) ?? false;
+  const newest = newestVersion(data.projects.map((p) => p.agent_version));
+  const names = data.projects.map((p) => p.name);
+  const pills = allPills ? names : names.slice(0, PROJECT_PILLS);
+  const total = project ? data.projects.find((p) => p.name === project)?.snapshots ?? 0 : data.totals?.snapshots ?? 0;
+  const cols = lagged ? 13 : 12;
+
+  const signedCell = (n: number | null) =>
+    n === null ? <span className="muted">—</span> : n > 0 ? <span className="add">+{num(n)}</span> : n < 0 ? <span className="rem-red">{num(n)}</span> : <span>0</span>;
+
+  const range = (rs: AdminSnapshotRow[]) => {
+    const [a, b] = [rs[rs.length - 1].captured_at, rs[0].captured_at];
+    const day = (t: number) => new Date(t * 1000).toDateString();
+    const time = (t: number) => new Date(t * 1000).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    const date = (t: number) => new Date(t * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    if (day(a) === day(b)) return time(a) === time(b) ? time(a) : `${time(a)}–${time(b)}`;
+    // "Nov 14–17" within a month, "Oct 30–Nov 2" across one.
+    const sameMonth = new Date(a * 1000).getMonth() === new Date(b * 1000).getMonth();
+    return `${date(a)}–${sameMonth ? new Date(b * 1000).getDate() : date(b)}`;
+  };
+
+  const row = (s: AdminSnapshotRow) => (
+    <tr key={s.id} className={s.unchanged ? 'dim' : undefined}>
+      <td>
+        {clock(s.captured_at)}
+        {s.chain && s.chain !== 'ok' && s.chain !== 'start' ? <span className="pill warn">{s.chain}</span> : null}
+      </td>
+      {lagged && (
+        <td className="muted" title={`${s.received_at - s.captured_at}s after capture`}>
+          {clock(s.received_at)}
+        </td>
+      )}
+      <td className="left strong">{s.project}</td>
+      <td>{num(s.file_count)}</td>
+      <td>{num(s.total_lines)}</td>
+      <td>{signedCell(s.lines_delta)}</td>
+      <td className="muted">{s.lines_added === null ? '—' : `+${num(s.lines_added)} / −${num(s.lines_removed)}`}</td>
+      <td>
+        {s.files_added ?? 0} / {s.files_removed ?? 0} / {s.files_modified ?? 0}
+      </td>
+      <td className="left">
+        {s.git_branch || '—'}
+        {s.git_dirty ? <span className="dot" title="Uncommitted changes" /> : null}
+      </td>
+      <td className="hash left">{shortSha(s.git_head)}</td>
+      <td className="hash left" title={s.tree_hash}>
+        {s.tree_hash.slice(0, 8)}
+      </td>
+      <td title={s.os ? `${s.os}/${s.arch}${s.capture_ms !== null ? `, ${s.capture_ms} ms capture` : ''}` : undefined}>
+        {newest && s.agent_version && s.agent_version !== newest ? (
+          <span className="pill warn">{s.agent_version}</span>
+        ) : (
+          s.agent_version || '—'
+        )}
+      </td>
+      <td>
+        <button
+          className="x-btn"
+          aria-label="Delete this snapshot"
+          title="Delete this snapshot"
+          onClick={() => confirm('Delete this snapshot?') && act(() => admin.deleteSnapshot(s.id))}
+        >
+          ✕
+        </button>
+      </td>
+    </tr>
+  );
 
   return (
     <div className="card">
-      <h2>Snapshot log</h2>
-      <p className="sub">Every snapshot their agents sent, newest first. Unchanged ticks are greyed out.</p>
-      <div className="filters">
-        <label className="filter">
-          <span>Project</span>
-          <select value={project} onChange={(e) => setProject(e.target.value)}>
-            <option value="">All projects</option>
-            {projects.map((p) => (
-              <option key={p} value={p}>
+      <div className="card-head">
+        <h2>Snapshot log</h2>
+        <span className="muted small">Newest first. Unchanged ticks are folded together.</span>
+        <div className="meta log-controls">
+          <div className="pills" role="group" aria-label="Project">
+            <button type="button" aria-pressed={project === ''} onClick={() => setProject('')}>
+              All
+            </button>
+            {pills.map((p) => (
+              <button key={p} type="button" aria-pressed={project === p} onClick={() => setProject(p)}>
                 {p}
-              </option>
+              </button>
             ))}
-          </select>
-        </label>
+            {!allPills && names.length > PROJECT_PILLS && (
+              <button type="button" aria-pressed={false} onClick={() => setAllPills(true)}>
+                +{names.length - PROJECT_PILLS}
+              </button>
+            )}
+          </div>
+          <Switch checked={hideUnchanged} onChange={setHideUnchanged}>
+            Hide unchanged
+          </Switch>
+        </div>
       </div>
       {error && <p className="signin-error">{error}</p>}
       {rows === null ? (
@@ -841,82 +1084,78 @@ function SnapshotLog({ id, projects, rev, act }: { id: string; projects: string[
         <div className="empty">No snapshots.</div>
       ) : (
         <div className="scroll-x">
-          <table>
+          <table className="compact log">
             <thead>
               <tr>
                 <th>Captured</th>
-                <th>Received</th>
-                <th>Project</th>
+                {lagged && <th>Received</th>}
+                <th className="left">Project</th>
                 <th>Files</th>
                 <th>Lines</th>
                 <th>Δ lines</th>
                 <th>+ / − lines</th>
-                <th>Saves</th>
-                <th>Seq</th>
                 <th>+ / − / ~ files</th>
-                <th>Branch</th>
-                <th>Head</th>
-                <th>Tree</th>
+                <th className="left">Branch</th>
+                <th className="left">Head</th>
+                <th className="left">Tree</th>
                 <th>Agent</th>
-                <th />
+                <th>
+                  <span className="sr-only">Delete</span>
+                </th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((s) => (
-                <tr key={s.id} className={s.unchanged ? 'dim' : undefined}>
-                  <td>{clock(s.captured_at)}</td>
-                  <td title={`${s.received_at - s.captured_at}s after capture`}>{clock(s.received_at)}</td>
-                  <td>{s.project}</td>
-                  <td>{num(s.file_count)}</td>
-                  <td>{num(s.total_lines)}</td>
-                  <td>{signed(s.lines_delta)}</td>
-                  <td>{s.lines_added === null ? '—' : `+${num(s.lines_added)} / −${num(s.lines_removed)}`}</td>
-                  <td>{s.save_count ?? '—'}</td>
-                  <td>
-                    {s.seq ?? '—'}
-                    {s.chain && s.chain !== 'ok' && s.chain !== 'start' ? <span className="pill warn">{s.chain}</span> : null}
-                  </td>
-                  <td>
-                    {s.files_added ?? 0} / {s.files_removed ?? 0} / {s.files_modified ?? 0}
-                  </td>
-                  <td>
-                    {s.git_branch || '—'}
-                    {s.git_dirty ? <span className="dot" title="Uncommitted changes" /> : null}
-                  </td>
-                  <td className="hash">{shortSha(s.git_head)}</td>
-                  <td className="hash" title={s.tree_hash}>
-                    {s.tree_hash.slice(0, 8)}
-                  </td>
-                  <td title={s.os ? `${s.os}/${s.arch}${s.capture_ms !== null ? `, ${s.capture_ms} ms capture` : ''}` : undefined}>{s.agent_version || '—'}</td>
-                  <td>
-                    <button
-                      className="link-btn"
-                      onClick={() => confirm('Delete this snapshot?') && act(() => admin.deleteSnapshot(s.id))}
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {items.map((it) =>
+                it.kind === 'row' ? (
+                  row(it.s)
+                ) : open.has(it.key) ? (
+                  it.rows.map(row)
+                ) : (
+                  <tr key={it.key} className="fold">
+                    <td colSpan={cols}>
+                      <button
+                        className="fold-btn"
+                        onClick={() => setOpen((o) => new Set(o).add(it.key))}
+                        aria-label={`Show ${it.rows.length} unchanged ticks`}
+                      >
+                        <span>
+                          ▸ <b>{num(it.rows.length)} unchanged tick{it.rows.length === 1 ? '' : 's'}</b> ·{' '}
+                          {it.rows[0].project} · {range(it.rows)}
+                        </span>
+                        <span className="muted">show</span>
+                      </button>
+                    </td>
+                  </tr>
+                ),
+              )}
             </tbody>
           </table>
         </div>
       )}
-      {more && (
-        <button className="btn-secondary inline ghost" onClick={loadMore}>
-          Load {PAGE} more
-        </button>
-      )}
+      <div className="log-foot">
+        {more && (
+          <button className="btn-secondary" style={{ marginTop: 0 }} onClick={loadMore}>
+            Load {PAGE} more
+          </button>
+        )}
+        {rows && rows.length > 0 && (
+          <span className="muted small">
+            Showing {num(rows.length)} of {num(total)}
+            {lagged ? '' : ' · received time matches captured time on all rows, so it’s hidden'}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
 
 function DangerZone({ id, data, act }: { id: string; data: AdminUser; act: Act }) {
   const disabled = !!data.account?.disabled_at;
+  const keys = data.keys.filter((k) => !k.revoked_at).length;
 
   const toggle = () => {
     if (!data.account?.email && !disabled) {
-      alert('Give this account an email first (Profile → Create account row).');
+      alert('Give this account an email first (Create account row).');
       return;
     }
     const msg = disabled
@@ -942,12 +1181,19 @@ function DangerZone({ id, data, act }: { id: string; data: AdminUser; act: Act }
 
   return (
     <div className="card danger">
-      <h2>Danger zone</h2>
-      <div className="btn-row">
-        <button className="btn-secondary inline ghost" onClick={toggle}>
+      <div>
+        <h2>Danger zone</h2>
+        <p className="sub" style={{ margin: 0 }}>
+          Disabling blocks sign-in and all {num(keys)} key{keys === 1 ? '' : 's'}. Deleting removes{' '}
+          {num(data.projects.length)} project{data.projects.length === 1 ? '' : 's'} and {num(data.totals?.snapshots)}{' '}
+          snapshots for good.
+        </p>
+      </div>
+      <div className="row-actions">
+        <button className="btn-outline-bad" onClick={toggle}>
           {disabled ? 'Re-enable account' : 'Disable account'}
         </button>
-        <button className="btn-secondary inline bad" onClick={remove}>
+        <button className="btn-bad" onClick={remove}>
           Delete account and all data
         </button>
       </div>

@@ -1,33 +1,58 @@
-import { useEffect } from 'react';
-import { InstallCard, UninstallCard } from '../ConnectCli';
+import { useEffect, useState } from 'react';
+import type { Hackatime } from '../api';
+import { PlatformPills, SetupSteps, UninstallCard, guessPlatform, type Platform } from '../ConnectCli';
 import { PageHead } from '../ui';
 
-/** `focus` is the card to scroll to: #/extensions/install or #/extensions/uninstall. */
-export function Extensions({ focus }: { focus?: string | null }) {
+/** `focus` is the section to scroll to: #/extensions/install or #/extensions/uninstall. */
+export function Extensions({ focus, ht }: { focus?: string | null; ht: Hackatime | null }) {
+  const [platform, setPlatform] = useState<Platform>(guessPlatform);
+
   useEffect(() => {
     if (focus) document.getElementById(focus)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [focus]);
 
+  const installDoc = platform === 'windows' ? 'install-windows' : 'install-macos';
+
   return (
     <>
-      <PageHead eyebrow="Setup" title="Extensions">
-        <p className="lede">What feeds this dashboard, and how to install it on the machine you code on.</p>
+      <PageHead title="Set up snapshot-agent" aside={<PlatformPills platform={platform} setPlatform={setPlatform} />}>
+        <p className="lede">Three steps, about two minutes. File contents and names never leave your machine.</p>
       </PageHead>
 
-      <InstallCard id="install" />
+      <div className="setup">
+        <div id="install">
+          <SetupSteps ht={ht} platform={platform} />
+          <UninstallCard id="uninstall" platform={platform} />
+        </div>
 
-      <div className="card">
-        <h2>Hackatime</h2>
-        <p className="sub">
-          Editor time — languages, editors, operating systems — comes from Hackatime's editor plugins. The agent
-          also reads their log to know which repo you are in, so set Hackatime up first.
-        </p>
-        <a className="btn-secondary inline" href="https://hackatime.hackclub.com" target="_blank" rel="noreferrer">
-          Set up Hackatime ↗
-        </a>
+        <aside>
+          <div className="aside-card">
+            <h2>Where your data comes from</h2>
+            <div className="src cli">
+              <b>snapshot-agent</b>
+              <p>Lines, churn and saves. Time your files were changing.</p>
+            </div>
+            <div className="src ht">
+              <b>Hackatime</b>
+              <p>
+                All editor time, languages and OS.{' '}
+                <a href="https://hackatime.hackclub.com" target="_blank" rel="noreferrer">
+                  Open ↗
+                </a>
+              </p>
+            </div>
+          </div>
+
+          <div className="aside-card">
+            <h2>Need help?</h2>
+            <div className="links">
+              <a href={`#/docs/${installDoc}#upgrade`}>Upgrading</a>
+              <a href="#/docs/troubleshooting">Troubleshooting</a>
+              <a href="#/extensions/uninstall">Uninstall snapshot-agent</a>
+            </div>
+          </div>
+        </aside>
       </div>
-
-      <UninstallCard id="uninstall" />
     </>
   );
 }

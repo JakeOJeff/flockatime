@@ -1,32 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  clock,
   dayRange,
+  getCliDaily,
   getHackatime,
   humanDuration,
+  listKeys,
   listProjects,
   localDay,
+  newestVersion,
   num,
   type Hackatime,
   type HackatimeSlice,
+  type MachineRow,
   type ProjectRow,
 } from '../api';
 import { href, type User } from '../App';
-import { Donut } from '../charts/Donut';
 import { DailyTime } from '../charts/DailyTime';
-import { RankBars } from '../charts/RankBars';
-import { CompareBars, compareRows } from '../charts/CompareBars';
-import {
-  PageHead,
-  RangeFilter,
-  SourceFilter,
-  SourceTag,
-  Tile,
-  rangeLabel,
-  showCli,
-  showHt,
-  type Source,
-} from '../ui';
+import { PageHead, RangePills, Tile } from '../ui';
 
 export const HT_ERRORS: Record<string, string> = {
   not_found:
@@ -40,7 +30,9 @@ type HtOk = Extract<Hackatime, { username: string | null }>;
 export const htOk = (ht: Hackatime | null): HtOk | null =>
   ht && ht.configured && !ht.error ? ht : null;
 
-const top = (rows: HackatimeSlice[] | undefined) => rows?.[0]?.name ?? '—';
+/** Why Hackatime has no numbers, or null when it has them (or is still loading). */
+const htProblem = (ht: Hackatime | null): string | null =>
+  !ht ? null : !ht.configured ? 'Hackatime is not connected.' : ht.error ? HT_ERRORS[ht.error] : null;
 
 function greeting(name: string | null) {
   const h = new Date().getHours();
@@ -48,256 +40,330 @@ function greeting(name: string | null) {
   return name ? `${part}, ${name.split(' ')[0]}` : part;
 }
 
-const slices = (rows: HackatimeSlice[]) =>
-  rows.map((r) => ({ name: r.name, seconds: r.total_seconds, percent: r.percent }));
+/** "Nov 18 at 10:01 PM" */
+const when = (unix: number) => {
+  const d = new Date(unix * 1000);
+  return `${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} at ${d.toLocaleTimeString(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  })}`;
+};
 
-/** Account-wide totals from the snapshot CLI over the selected range. */
-function CliTiles({ projects }: { projects: ProjectRow[] }) {
-  const sum = (f: (p: ProjectRow) => number | null | undefined) => projects.reduce((a, p) => a + (f(p) ?? 0), 0);
-  const added = sum((p) => p.window.lines_added);
-  const removed = sum((p) => p.window.lines_removed);
-  const hasSaves = projects.some((p) => p.window.saves !== null);
-  const uncommitted = sum((p) => (p.git_insertions ?? 0) + (p.git_deletions ?? 0));
-  const dirty = projects.filter((p) => p.git_dirty).length;
-  const active = projects.filter((p) => p.window.snapshots > 0).length;
-  const breaks = sum((p) => p.window.chain_breaks);
-
-  return (
-    <div className="tiles six">
-      <Tile label="Snapshot CLI time" value={humanDuration(sum((p) => p.active_seconds))} sub={`${active} of ${projects.length} projects active`} accent />
-      <Tile label="Lines written" value={`+${num(added)}`} sub={`−${num(removed)} removed`} />
-      <Tile label="Saves" value={hasSaves ? num(sum((p) => p.window.saves)) : '—'} sub={hasSaves ? 'between snapshots' : 'needs agent 0.3'} />
-      <Tile label="Builds · tests" value={`${num(sum((p) => p.window.builds))} · ${num(sum((p) => p.window.tests))}`} sub="output and cache touches" />
-      <Tile label="Uncommitted" value={num(uncommitted)} sub={`lines across ${dirty} dirty repo${dirty === 1 ? '' : 's'}`} />
-      <Tile label="History chain" value={breaks === 0 ? 'Intact' : `${num(breaks)} breaks`} sub="missing or forked snapshots" />
-    </div>
-  );
-}
+const CHART_DAYS = 14;
+const PROJECT_ROWS = 8;
+const LANGUAGES_SHOWN = 5;
 
 export function Home({
   user,
   days,
   setDays,
   ht,
-  source,
-  setSource,
 }: {
   user: User | null;
   days: number;
   setDays: (d: number) => void;
   ht: Hackatime | null;
-  source: Source;
-  setSource: (s: Source) => void;
 }) {
   const [today, setToday] = useState<HtOk | null>(null);
+  const [recent, setRecent] = useState<HtOk | null>(null);
+  const [cliDaily, setCliDaily] = useState<Map<string, number> | null>(null);
   const [projects, setProjects] = useState<ProjectRow[] | null>(null);
+  const [machines, setMachines] = useState<MachineRow[] | null>(null);
 
-  // The headline sentence is always about the last day, whatever the range.
+  // The headline and the 14-day chart ignore the range: they are always about now.
   useEffect(() => {
     getHackatime(1)
       .then((r) => setToday(htOk(r)))
       .catch(() => undefined);
+    getHackatime(CHART_DAYS)
+      .then((r) => setRecent(htOk(r)))
+      .catch(() => undefined);
+    getCliDaily(CHART_DAYS)
+      .then((r) => setCliDaily(new Map(r.daily.map((d) => [d.day, d.seconds]))))
+      .catch(() => setCliDaily(new Map()));
+    listKeys()
+      .then((r) => setMachines(r.keys))
+      .catch(() => setMachines([]));
   }, []);
 
-  // Active time follows the range, so it lines up with Hackatime's numbers.
   useEffect(() => {
     let live = true;
     listProjects(days)
       .then((r) => live && setProjects(r.projects))
-      .catch(() => undefined);
+      .catch(() => live && setProjects([]));
     return () => {
       live = false;
     };
   }, [days]);
 
-  const ok = showHt(source) ? htOk(ht) : null;
-  const latest = projects?.reduce((m, p) => Math.max(m, p.received_at ?? 0), 0) || null;
-  const dayList = useMemo(() => dayRange(Math.min(days, 90)), [days]);
-  const series = useMemo(
-    () =>
-      ok
-        ? [{ label: 'Coding time', color: 'var(--series-1)', values: new Map(ok.daily.map((d) => [d.day, d.seconds])) }]
-        : [],
-    [ok],
+  const ok = htOk(ht);
+  const sum = (f: (p: ProjectRow) => number | null | undefined) =>
+    (projects ?? []).reduce((a, p) => a + (f(p) ?? 0), 0);
+
+  const latest = projects?.reduce<ProjectRow | null>(
+    (m, p) => ((p.received_at ?? 0) > (m?.received_at ?? 0) ? p : m),
+    null,
   );
   const todaySeconds = today?.daily.find((d) => d.day === localDay(Date.now() / 1000))?.seconds ?? 0;
 
-  // Both sources side by side, per project. Hackatime's half is left out when
-  // it is filtered off or unavailable, leaving the CLI's time on its own.
-  const cliTotal = projects?.reduce((a, p) => a + p.active_seconds, 0) ?? 0;
-  const compare = showCli(source) && projects && projects.length + (ok?.projects.length ?? 0) > 0 && (
-    <div className="card">
-      <h2>
-        {ok ? 'Snapshot CLI vs Hackatime' : 'Snapshot CLI time by project'}
-        <SourceTag source="cli" />
-        {ok && <SourceTag source="hackatime" />}
-      </h2>
-      <p className="sub">
-        {rangeLabel(days)}. Snapshot CLI counts the time your files were changing; Hackatime counts all editor time,
-        reading included, so it usually runs higher. Projects are matched by name.
-      </p>
-      <CompareBars
-        rows={compareRows(projects, ok?.projects ?? null)}
-        cliTotal={cliTotal}
-        htTotal={ok ? ok.total_seconds : null}
-      />
-    </div>
-  );
-
   return (
     <>
-      <PageHead
-        eyebrow={greeting(user?.name ?? null)}
-        title={
-          <>
-            WE are watching <em>your</em> coding time
-          </>
-        }
-      >
+      <PageHead title={greeting(user?.name ?? null)} aside={<RangePills days={days} onChange={setDays} today />}>
         <p className="lede">
-          {source === 'cli'
-            ? projects === null
-              ? ' '
-              : `${projects.length} project${projects.length === 1 ? '' : 's'} snapshotted${
-                  latest ? `, last received ${clock(latest)}` : ''
-                }.`
-            : today === null
-            ? ' '
-            : todaySeconds > 0
-              ? `Today, you've logged ${humanDuration(todaySeconds)}${
-                  today.languages[0] ? ` across ${today.languages[0].name}` : ''
-                }${today.editors[0] ? ` using ${today.editors[0].name}` : ''}.`
-              : 'Nothing logged yet today. Open an editor and it will show up here.'}
+          {todaySeconds > 0
+            ? `Today you've logged ${humanDuration(todaySeconds)}${today?.languages[0] ? `, mostly ${today.languages[0].name}` : ''}.`
+            : 'Nothing logged yet today.'}
+          {latest?.received_at ? (
+            <>
+              {' '}
+              Last session: <strong>{latest.name}</strong>, {when(latest.received_at)}.
+            </>
+          ) : null}
         </p>
       </PageHead>
 
-      <div className="filters">
-        <RangeFilter days={days} onChange={setDays} />
-        <SourceFilter source={source} onChange={setSource} />
+      <div className="kpis">
+        <Tile
+          tone="ht"
+          label="Editor time"
+          value={ok ? humanDuration(ok.total_seconds) : '—'}
+          sub={ok ? `from Hackatime · ${num(ok.projects.length)} projects` : htProblem(ht) ?? 'Loading Hackatime…'}
+        />
+        <Tile
+          tone="cli"
+          label="Captured"
+          value={projects ? humanDuration(sum((p) => p.active_seconds)) : '—'}
+          sub={projects ? `by snapshot-agent · ${num(projects.length)} repo${projects.length === 1 ? '' : 's'}` : ' '}
+        />
+        <Tile
+          tone="add"
+          label="Lines written"
+          value={projects ? `+${compact(sum((p) => p.window.lines_added))}` : '—'}
+          sub={projects ? `${num(sum((p) => p.window.lines_removed))} removed` : ' '}
+        />
+        <Health projects={projects} machines={machines} />
       </div>
 
-      {showHt(source) && ht === null && <div className="card empty">Loading Hackatime…</div>}
-      {showHt(source) && ht && !ht.configured && (
-        <div className="card empty">Sign in, or set HACKATIME_USER / HACKATIME_API_KEY, to show Hackatime stats.</div>
-      )}
-      {showHt(source) && ht && ht.configured && ht.error && <div className="card empty">{HT_ERRORS[ht.error]}</div>}
+      <RecentDays ht={recent} cli={cliDaily} problem={htProblem(ht)} />
 
-      {showCli(source) && projects && projects.length > 0 && <CliTiles projects={projects} />}
-
-      {!ok && compare}
-
-      {ok && (
-        <>
-          <div className="tiles six">
-            <Tile label="Total time" value={humanDuration(ok.total_seconds)} accent />
-            <Tile label="Top project" value={top(ok.projects)} />
-            <Tile label="Top language" value={top(ok.languages)} />
-            <Tile label="Top OS" value={top(ok.operating_systems)} />
-            <Tile label="Top editor" value={top(ok.editors)} />
-            <Tile label="Top category" value={top(ok.categories)} />
-          </div>
-
-          {compare}
-
-          <div className="grid-2">
-            <div className="card">
-              <h2>
-                Project durations
-                <SourceTag source="hackatime" />
-              </h2>
-              <RankBars
-                limit={10}
-                rows={ok.projects.map((p) => ({ name: p.name, seconds: p.total_seconds, percent: p.percent }))}
-              />
-            </div>
-            <div className="card">
-              <h2>
-                Languages
-                <SourceTag source="hackatime" />
-              </h2>
-              <Donut label="Languages" rows={slices(ok.languages)} />
-            </div>
-            <div className="card">
-              <h2>
-                Editors
-                <SourceTag source="hackatime" />
-              </h2>
-              <Donut label="Editors" rows={slices(ok.editors)} />
-            </div>
-            <div className="card">
-              <h2>
-                Operating systems
-                <SourceTag source="hackatime" />
-              </h2>
-              <Donut label="Operating systems" rows={slices(ok.operating_systems)} />
-            </div>
-          </div>
-
-          <div className="card">
-            <h2>
-              Coding time per day
-              <SourceTag source="hackatime" />
-            </h2>
-            <p className="sub">
-              {days > 90 ? 'The last 90 days' : rangeLabel(days)}, averaging {humanDuration(ok.daily_average)} a
-              day.
-            </p>
-            <DailyTime days={dayList} series={series} />
-          </div>
-        </>
-      )}
-
-      {showCli(source) && projects && projects.length > 0 && (
-        <div className="card">
-          <h2>
-            Snapshotted by flockatime
-            <SourceTag source="cli" />
-          </h2>
-          <p className="sub">
-            Projects the agent is watching, with their active time in this range
-            {ok ? ' beside Hackatime’s editor time' : ''}. Open one for its lines, churn and sessions.
-          </p>
-          <ul className="plist">
-            {projects.map((p) => {
-              const htp = ok?.projects.find((h) => h.name.toLowerCase() === p.name.toLowerCase());
-              return (
-                <li key={p.name}>
-                  <a href={href('projects', p.name)}>
-                    <span className="rank-name">{p.name}</span>
-                    <span className="muted">
-                      <span className="time-cli" title="Snapshot CLI active time">
-                        {humanDuration(p.active_seconds)}
-                      </span>
-                      {ok && (
-                        <>
-                          {' · '}
-                          <span className="time-ht" title="Hackatime editor time">
-                            {htp ? humanDuration(htp.total_seconds) : '—'}
-                          </span>
-                        </>
-                      )}
-                      {' · '}
-                      +{num(p.window.lines_added)}/−{num(p.window.lines_removed)}
-                      {p.window.saves !== null ? ` · ${num(p.window.saves)} saves` : ''}
-                      {' · '}
-                      {num(p.total_lines)} lines · {p.captured_at ? clock(p.captured_at) : 'no snapshot'}
-                    </span>
-                  </a>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      )}
-      {showCli(source) && projects && projects.length === 0 && (
+      {projects && projects.length === 0 && !ok ? (
         <div className="card">
           <h2>No projects yet</h2>
           <p className="sub">
-            Install the agent from <a href={href('extensions')}>Extensions</a> and your projects will appear
-            here as you edit them.
+            Set up snapshot-agent from <a href={href('extensions')}>Extensions</a> and your repos appear here as you
+            edit them.
           </p>
+        </div>
+      ) : (
+        <div className="home-grid">
+          <ProjectsCard ht={ok} projects={projects ?? []} />
+          <LanguagesCard ht={ok} />
         </div>
       )}
     </>
+  );
+}
+
+/** 122,600 → "122.6k"; small numbers stay exact. */
+function compact(n: number): string {
+  if (n < 10_000) return n.toLocaleString();
+  if (n < 1_000_000) return `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k`;
+  return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
+}
+
+/** Is the snapshot data trustworthy, and is every machine current? */
+function Health({ projects, machines }: { projects: ProjectRow[] | null; machines: MachineRow[] | null }) {
+  const p = projects ?? [];
+  const breaks = p.reduce((a, x) => a + x.window.chain_breaks, 0);
+  const hasSaves = p.some((x) => x.window.saves !== null);
+  const saves = p.reduce((a, x) => a + (x.window.saves ?? 0), 0);
+  const builds = p.reduce((a, x) => a + x.window.builds, 0);
+  const tests = p.reduce((a, x) => a + x.window.tests, 0);
+
+  const live = (machines ?? []).filter((m) => !m.revoked_at && m.agent_version);
+  const newest = newestVersion([...live.map((m) => m.agent_version), ...p.map((x) => x.agent_version)]);
+  const old = (v: string | null) => !!(newest && v && v !== newest && /^\d/.test(v));
+  // Machines say how many installs are behind; snapshots sent before keys were
+  // recorded only say which versions are, so count whichever finds more.
+  const outdated = Math.max(
+    live.filter((m) => old(m.agent_version)).length,
+    new Set(p.filter((x) => old(x.agent_version)).map((x) => x.agent_version)).size,
+  );
+
+  return (
+    <div className="tile">
+      <div className="label">Health</div>
+      <dl className="health">
+        <div>
+          <dt>History chain</dt>
+          <dd className={breaks === 0 ? 'ok' : 'warn'}>{breaks === 0 ? 'Intact' : `${num(breaks)} breaks`}</dd>
+        </div>
+        <div>
+          <dt>Saves · builds · tests</dt>
+          <dd>{`${hasSaves ? num(saves) : '—'} · ${num(builds)} · ${num(tests)}`}</dd>
+        </div>
+        <div>
+          <dt>Agent</dt>
+          <dd className={outdated ? 'warn' : newest ? 'ok' : undefined}>
+            {machines === null ? '…' : !newest ? 'none yet' : outdated ? `${outdated} outdated` : 'up to date'}
+          </dd>
+        </div>
+      </dl>
+    </div>
+  );
+}
+
+/** The last two weeks, both sources side by side per day. */
+function RecentDays({ ht, cli, problem }: { ht: HtOk | null; cli: Map<string, number> | null; problem: string | null }) {
+  const days = useMemo(() => dayRange(CHART_DAYS), []);
+  const series = useMemo(
+    () => [
+      ...(ht ? [{ label: 'Hackatime', color: 'var(--ht)', values: new Map(ht.daily.map((d) => [d.day, d.seconds])) }] : []),
+      ...(cli ? [{ label: 'Snapshot CLI', color: 'var(--cli)', values: cli }] : []),
+    ],
+    [ht, cli],
+  );
+  // Both sources measure the same coding, so a day counts whichever saw more of it.
+  const total = days.reduce((a, d) => a + Math.max(0, ...series.map((s) => s.values.get(d) ?? 0)), 0);
+
+  return (
+    <div className="card">
+      <div className="card-head">
+        <h2>Last {CHART_DAYS} days</h2>
+        {ht && <span className="src-tag hackatime">Hackatime</span>}
+        <span className="src-tag cli">Snapshot CLI</span>
+        {total > 0 && (
+          <span className="meta">
+            {humanDuration(total)} total · about {humanDuration(total / CHART_DAYS)} a day
+          </span>
+        )}
+      </div>
+      {problem && <p className="sub">{problem}</p>}
+      <DailyTime days={days} series={series} overview />
+    </div>
+  );
+}
+
+interface DuoRow {
+  name: string;
+  ht: number | null;
+  cli: number | null;
+}
+
+/** Hackatime and snapshot-agent time per project, matched by name. */
+function ProjectsCard({ ht, projects }: { ht: HtOk | null; projects: ProjectRow[] }) {
+  const rows = useMemo(() => {
+    const byName = new Map<string, DuoRow>();
+    for (const p of ht?.projects ?? []) byName.set(p.name.toLowerCase(), { name: p.name, ht: p.total_seconds, cli: null });
+    for (const p of projects) {
+      const r = byName.get(p.name.toLowerCase());
+      if (r) r.cli = p.active_seconds;
+      else byName.set(p.name.toLowerCase(), { name: p.name, ht: null, cli: p.active_seconds });
+    }
+    return [...byName.values()].sort((a, b) => (b.ht ?? 0) - (a.ht ?? 0) || (b.cli ?? 0) - (a.cli ?? 0));
+  }, [ht, projects]);
+
+  const max = Math.max(1, ...rows.map((r) => Math.max(r.ht ?? 0, r.cli ?? 0)));
+  const tracked = new Set(projects.map((p) => p.name.toLowerCase()));
+  const bar = (v: number | null) => (v ? `max(7px, ${(v / max) * 100}%)` : '0');
+
+  return (
+    <div className="card">
+      <div className="card-head">
+        <h2>Projects</h2>
+        {ht && <span className="meta-inline muted small">Hackatime includes reading time, so it runs higher</span>}
+        <span className="meta">
+          <a href={href('projects')}>See all {num(rows.length)} →</a>
+        </span>
+      </div>
+      {rows.length === 0 ? (
+        <div className="empty">Nothing in this range.</div>
+      ) : (
+        <ul className="duo">
+          {rows.slice(0, PROJECT_ROWS).map((r) => {
+            const isTracked = tracked.has(r.name.toLowerCase());
+            return (
+              <li key={r.name}>
+                <a href={isTracked ? href('projects', r.name) : href('projects')}>
+                  <span className="duo-name" title={r.name}>
+                    {r.name}
+                  </span>
+                  <span className="duo-bars" aria-hidden>
+                    {r.ht ? <span className="ht" style={{ width: bar(r.ht) }} /> : null}
+                    {r.cli ? <span className="cli" style={{ width: bar(r.cli) }} /> : null}
+                  </span>
+                  <span className="duo-v ht" title="Hackatime editor time">
+                    {r.ht !== null ? humanDuration(r.ht) : '—'}
+                  </span>
+                  <span
+                    className={isTracked ? 'duo-v cli' : 'duo-v none'}
+                    title={isTracked ? 'Time snapshot-agent saw files changing' : 'snapshot-agent has not seen this repo'}
+                  >
+                    {isTracked ? humanDuration(r.cli ?? 0) : 'untracked'}
+                  </span>
+                </a>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function LanguagesCard({ ht }: { ht: HtOk | null }) {
+  const langs = ht?.languages ?? [];
+  const shown = langs.slice(0, LANGUAGES_SHOWN).map((l, i) => ({ ...l, color: `var(--cat-${i + 1})` }));
+  const rest = langs.slice(LANGUAGES_SHOWN);
+  const parts: (HackatimeSlice & { color: string })[] = rest.length
+    ? [
+        ...shown,
+        {
+          name: `${rest.length} more`,
+          total_seconds: rest.reduce((a, l) => a + l.total_seconds, 0),
+          percent: rest.reduce((a, l) => a + l.percent, 0),
+          color: 'var(--cat-other)',
+        },
+      ]
+    : shown;
+  const total = langs.reduce((a, l) => a + l.total_seconds, 0);
+  const editor = ht?.editors[0]?.name;
+  const os = ht?.operating_systems[0]?.name;
+
+  return (
+    <div className="card">
+      <div className="card-head">
+        <h2>Languages</h2>
+        {total > 0 && <span className="meta">{humanDuration(total)}</span>}
+      </div>
+      {parts.length === 0 ? (
+        <div className="empty">{ht ? 'No languages in this range.' : 'Languages come from Hackatime.'}</div>
+      ) : (
+        <>
+          <div className="stack" role="img" aria-label="Share of time by language">
+            {parts.map((p) => (
+              <span key={p.name} style={{ flexGrow: p.total_seconds, background: p.color }} title={p.name} />
+            ))}
+          </div>
+          <ul className="stack-legend">
+            {parts.map((p) => (
+              <li key={p.name}>
+                <i style={{ background: p.color }} />
+                <b>{p.name}</b>
+                <span className="pct">{Math.round(p.percent)}%</span>
+                <span className="t">{humanDuration(p.total_seconds)}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {ht && (
+        <p className="foot-note">
+          {editor || os
+            ? `Mostly ${[editor, os && `on ${os}`].filter(Boolean).join(' ')}.`
+            : 'Editor, OS and category show up once your Hackatime plugin reports them.'}
+        </p>
+      )}
+    </div>
   );
 }

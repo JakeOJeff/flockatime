@@ -45,10 +45,10 @@ export default function App() {
 const NAV = [
   { page: 'home', label: 'Home' },
   { page: 'projects', label: 'Projects' },
-  { page: 'docs', label: 'Docs' },
   { page: 'extensions', label: 'Extensions' },
   { page: 'settings', label: 'Settings' },
-  { page: 'admin', label: 'Admin Panel', admin: true },
+  { page: 'docs', label: 'Docs ↗', external: true },
+  { page: 'admin', label: 'Admin panel', admin: true },
 ] as const;
 
 export type Page = (typeof NAV)[number]['page'];
@@ -159,6 +159,8 @@ function Shell({ user, admin }: { user: User | null; admin: boolean }) {
             <a
               key={n.page}
               href={href(n.page)}
+              // Docs open beside the dashboard rather than replacing it.
+              {...('external' in n ? { target: '_blank', rel: 'noopener' } : {})}
               aria-current={page === n.page ? 'page' : undefined}
               className={'admin' in n ? 'nav-admin' : undefined}
             >
@@ -186,7 +188,7 @@ function Shell({ user, admin }: { user: User | null; admin: boolean }) {
           </div>
         )}
         {page === 'home' && (
-          <Home user={shown} days={days} setDays={setDays} ht={ht} source={source} setSource={setSource} />
+          <Home user={shown} days={days} setDays={setDays} ht={ht} />
         )}
         {page === 'projects' && (
           <Projects
@@ -199,7 +201,7 @@ function Shell({ user, admin }: { user: User | null; admin: boolean }) {
           />
         )}
         {page === 'docs' && <Docs route={route.project} />}
-        {page === 'extensions' && <Extensions focus={route.project} />}
+        {page === 'extensions' && <Extensions focus={route.project} ht={ht} />}
         {page === 'settings' && <Settings user={shown} ht={ht} />}
         {page === 'admin' && <Admin account={route.project} viewAs={viewAs} onViewAs={viewAsAccount} />}
       </main>

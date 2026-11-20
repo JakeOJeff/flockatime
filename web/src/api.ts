@@ -428,7 +428,23 @@ export interface ApiKeyRow {
   revoked_at: number | null;
 }
 
-export const listKeys = () => get<{ keys: ApiKeyRow[] }>('/api/keys');
+/** A key with what its machine has sent (Settings → Your machines). */
+export interface MachineRow extends ApiKeyRow {
+  snapshots: number;
+  repos: number;
+  os: string | null;
+  arch: string | null;
+  agent_version: string | null;
+  last_snapshot: number | null;
+  /** Snapshots per local day over the last 30 days, oldest first. */
+  daily: number[];
+}
+
+export const listKeys = () => get<{ keys: MachineRow[] }>(`/api/keys?tz=${tz()}`);
+
+/** Snapshot CLI active seconds per local day, every project together. */
+export const getCliDaily = (days: number) =>
+  get<{ daily: { day: string; seconds: number }[] }>(`/api/daily?days=${days}&tz=${tz()}`);
 
 async function send<T>(method: 'POST' | 'PATCH' | 'DELETE', path: string, body: unknown): Promise<T> {
   // JSON on purpose: the server refuses writes without it (CSRF guard).

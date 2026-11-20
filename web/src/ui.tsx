@@ -63,19 +63,22 @@ export function SourceTag({ source }: { source: 'cli' | 'hackatime' }) {
   return <span className={`src-tag ${source}`}>{source === 'cli' ? 'Snapshot CLI' : 'Hackatime'}</span>;
 }
 
+/** `tone` colours the number by what it measures: Hackatime, snapshot-agent, or lines added. */
 export function Tile({
   label,
   value,
   sub,
   accent,
+  tone,
 }: {
   label: string;
   value: string;
   sub?: string;
   accent?: boolean;
+  tone?: 'ht' | 'cli' | 'add';
 }) {
   return (
-    <div className={accent ? 'tile accent' : 'tile'}>
+    <div className={['tile', accent && 'accent', tone].filter(Boolean).join(' ')}>
       <div className="label">{label}</div>
       <div className="value" title={value}>
         {value}
@@ -88,12 +91,68 @@ export function Tile({
 export const pct = (part: number | null | undefined, whole: number | null | undefined) =>
   whole ? `${Math.round(((part ?? 0) / whole) * 100)}%` : '—';
 
-export function PageHead({ eyebrow, title, children }: { eyebrow?: string; title: React.ReactNode; children?: React.ReactNode }) {
+/** Title and lede on the left; `aside` (usually range pills) on the right. */
+export function PageHead({
+  eyebrow,
+  title,
+  aside,
+  children,
+}: {
+  eyebrow?: string;
+  title: React.ReactNode;
+  aside?: React.ReactNode;
+  children?: React.ReactNode;
+}) {
   return (
     <header className="page-head">
-      {eyebrow && <div className="eyebrow">{eyebrow}</div>}
-      <h1>{title}</h1>
-      {children}
+      <div className="page-head-text">
+        {eyebrow && <div className="eyebrow">{eyebrow}</div>}
+        <h1>{title}</h1>
+        {children}
+      </div>
+      {aside}
     </header>
+  );
+}
+
+/** Segmented buttons; exactly one is pressed. */
+export function Pills<T extends string | number>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: T;
+  options: { value: T; label: string }[];
+  onChange: (v: T) => void;
+}) {
+  return (
+    <div className="pills" role="group" aria-label={label}>
+      {options.map((o) => (
+        <button key={o.value} type="button" aria-pressed={o.value === value} onClick={() => onChange(o.value)}>
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+const PILL_RANGES = [
+  { value: 1, label: 'Today' },
+  { value: 7, label: '7 days' },
+  { value: 30, label: '30 days' },
+  { value: ALL_TIME, label: 'All time' },
+];
+
+/** The date range as pills. `today` adds a one-day option (Home only). */
+export function RangePills({ days, onChange, today }: { days: number; onChange: (d: number) => void; today?: boolean }) {
+  return (
+    <Pills
+      label="Date range"
+      value={days}
+      options={today ? PILL_RANGES : PILL_RANGES.slice(1)}
+      onChange={onChange}
+    />
   );
 }

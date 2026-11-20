@@ -2,8 +2,9 @@ import { useMemo, useState } from 'react';
 import { dayLabel, hours, humanDuration } from '../api';
 import { useSize } from './useSize';
 
-const PAD = { top: 14, right: 16, bottom: 26, left: 44 };
-const HEIGHT = 200;
+const DETAIL_PAD = { top: 14, right: 16, bottom: 26, left: 44 };
+const OVERVIEW_PAD = { top: 8, right: 0, bottom: 26, left: 0 };
+const DETAIL_HEIGHT = 200;
 const GAP = 2; // surface gap between adjacent bars
 const R = 4; // rounded data-end
 
@@ -25,7 +26,21 @@ function barPath(x: number, w: number, base: number, top: number): string {
  * Time per day, one bar per series side by side. Both series are durations on
  * the same axis, so they share one scale — never a second y-axis.
  */
-export function DailyTime({ days, series }: { days: string[]; series: TimeSeries[] }) {
+/**
+ * `overview` is the Home variant: no y-axis or legend (the card header carries
+ * it), every day labelled with its date, and the bar pairs spaced apart.
+ */
+export function DailyTime({
+  days,
+  series,
+  overview,
+}: {
+  days: string[];
+  series: TimeSeries[];
+  overview?: boolean;
+}) {
+  const PAD = overview ? OVERVIEW_PAD : DETAIL_PAD;
+  const HEIGHT = overview ? 210 : DETAIL_HEIGHT;
   const { ref, width } = useSize<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
 
@@ -38,20 +53,22 @@ export function DailyTime({ days, series }: { days: string[]; series: TimeSeries
     const band = w / days.length;
     const max = Math.max(...series.flatMap((s) => days.map((d) => s.values.get(d) ?? 0)), 60);
     const base = PAD.top + h;
-    const barW = Math.max((band - GAP * (series.length + 1)) / series.length, 1);
+    // The overview leaves a fifth of each day empty on either side.
+    const inset = overview ? band * 0.1 : 0;
+    const barW = Math.max((band - 2 * inset - GAP * (series.length + 1)) / series.length, 1);
 
     const groups = days.map((day, i) => ({
       day,
       center: PAD.left + i * band + band / 2,
       bars: series.map((s, j) => {
         const v = s.values.get(day) ?? 0;
-        const x = PAD.left + i * band + GAP + j * (barW + GAP);
+        const x = PAD.left + i * band + inset + GAP + j * (barW + GAP);
         return { v, path: barPath(x, barW, base, base - (v / max) * h), color: s.color };
       }),
     }));
 
     return { groups, band, max, base, h };
-  }, [days, series, width]);
+  }, [days, series, width, overview, PAD, HEIGHT]);
 
   const active = plot && hover !== null ? plot.groups[hover] : null;
 
@@ -73,7 +90,7 @@ export function DailyTime({ days, series }: { days: string[]; series: TimeSeries
               setHover(idx >= 0 && idx < plot.groups.length ? idx : null);
             }}
           >
-            {[0.5, 1].map((f) => (
+            {!overview && [0.5, 1].map((f) => (
               <g key={f}>
                 <line
                   x1={PAD.left}
@@ -107,12 +124,22 @@ export function DailyTime({ days, series }: { days: string[]; series: TimeSeries
               y2={plot.base}
               stroke="var(--border)"
             />
-            <text x={PAD.left} y={HEIGHT - 6} fontSize={11} fill="var(--text-muted)">
-              {dayLabel(days[0])}
-            </text>
-            <text x={width - PAD.right} y={HEIGHT - 6} fontSize={11} textAnchor="end" fill="var(--text-muted)">
-              {dayLabel(days[days.length - 1])}
-            </text>
+            {overview ? (
+              plot.groups.map((g) => (
+                <text key={g.day} x={g.center} y={HEIGHT - 6} fontSize={12} textAnchor="middle" fill="var(--text-muted)">
+                  {Number(g.day.slice(8))}
+                </text>
+              ))
+            ) : (
+              <>
+                <text x={PAD.left} y={HEIGHT - 6} fontSize={11} fill="var(--text-muted)">
+                  {dayLabel(days[0])}
+                </text>
+                <text x={width - PAD.right} y={HEIGHT - 6} fontSize={11} textAnchor="end" fill="var(--text-muted)">
+                  {dayLabel(days[days.length - 1])}
+                </text>
+              </>
+            )}
           </svg>
 
           {active && (
@@ -133,7 +160,7 @@ export function DailyTime({ days, series }: { days: string[]; series: TimeSeries
             </div>
           )}
 
-          {series.length > 1 && (
+          {series.length > 1 && !overview && (
             <div className="legend">
               {series.map((s) => (
                 <span className="key" key={s.label}>

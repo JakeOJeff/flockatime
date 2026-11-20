@@ -23,15 +23,59 @@ const MAX_ACTIVE_KEYS = 50;
 
 export const isJson = (ct: string | undefined) => (ct ?? '').toLowerCase().startsWith('application/json');
 
+/** Days of per-key activity returned for the Settings sparkline. */
+const ACTIVITY_DAYS = 30;
+
+/**
+ * Every key with what its machine has sent: snapshot and repo counts, the
+ * platform and agent version of its latest snapshot, and snapshots per local
+ * day (`tz` = the viewer's UTC offset in minutes) over the last 30 days,
+ * oldest first. Snapshots from before keys were recorded count for no key.
+ */
 keys.get('/api/keys', async (c) => {
-  const { results } = await c.env.DB.prepare(
-    `SELECT key_hash AS id, label, created_at, last_used, revoked_at
-       FROM api_keys WHERE account_id = ?1
-      ORDER BY revoked_at IS NOT NULL, created_at DESC`,
-  )
-    .bind(c.get('accountId'))
-    .all();
-  return c.json({ keys: results });
+  const account = c.get('accountId');
+  const tz = Math.max(-840, Math.min(840, Number(c.req.query('tz')) || 0)) * 60;
+  const now = Math.floor(Date.now() / 1000);
+  const today = Math.floor((now + tz) / 86400);
+  const from = (today - ACTIVITY_DAYS + 1) * 86400 - tz;
+
+  const [{ results }, { results: days }] = await Promise.all([
+    c.env.DB.prepare(
+      `SELECT k.key_hash AS id, k.label, k.created_at, k.last_used, k.revoked_at,
+              (SELECT COUNT(*) FROM snapshots s WHERE s.key_hash = k.key_hash)                 AS snapshots,
+              (SELECT COUNT(DISTINCT project_id) FROM snapshots s WHERE s.key_hash = k.key_hash) AS repos,
+              l.os, l.arch, l.agent_version, l.received_at AS last_snapshot
+         FROM api_keys k
+         LEFT JOIN snapshots l ON l.id = (
+           SELECT id FROM snapshots WHERE key_hash = k.key_hash ORDER BY received_at DESC LIMIT 1
+         )
+        WHERE k.account_id = ?1
+        ORDER BY k.revoked_at IS NOT NULL, k.created_at DESC`,
+    )
+      .bind(account)
+      .all<{ id: string }>(),
+    c.env.DB.prepare(
+      `SELECT s.key_hash AS id, (s.received_at + ?3) / 86400 AS day, COUNT(*) AS n
+         FROM snapshots s JOIN api_keys k ON k.key_hash = s.key_hash
+        WHERE k.account_id = ?1 AND s.received_at >= ?2
+        GROUP BY s.key_hash, day`,
+    )
+      .bind(account, from, tz)
+      .all<{ id: string; day: number; n: number }>(),
+  ]);
+
+  const activity = new Map<string, number[]>();
+  for (const d of days) {
+    const i = d.day - (today - ACTIVITY_DAYS + 1);
+    if (i < 0 || i >= ACTIVITY_DAYS) continue;
+    let row = activity.get(d.id);
+    if (!row) activity.set(d.id, (row = new Array<number>(ACTIVITY_DAYS).fill(0)));
+    row[i] += d.n;
+  }
+
+  return c.json({
+    keys: results.map((k) => ({ ...k, daily: activity.get(k.id) ?? new Array<number>(ACTIVITY_DAYS).fill(0) })),
+  });
 });
 
 keys.post('/api/keys', async (c) => {

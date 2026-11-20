@@ -51,6 +51,7 @@ export async function requireAgentKey(c: Context<AppEnv>, next: Next) {
   }
 
   c.set('accountId', row.account_id);
+  c.set('keyHash', hash);
   // Fire-and-forget: a failed last_used write must never fail an ingest.
   c.executionCtx.waitUntil(
     c.env.DB.prepare(`UPDATE api_keys SET last_used = ?1 WHERE key_hash = ?2`)

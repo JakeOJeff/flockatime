@@ -345,10 +345,10 @@ ingest.post('/v1/snapshots', requireAgentKey, async (c) => {
               git_behind, git_staged, git_modified, git_untracked, git_conflicted,
               git_insertions, git_deletions, git_commits, git_last_commit_at, git_stashes,
               lines_added, lines_removed, tail_edits, mid_edits,
-              seq, prev_hash, chain, save_count, save_times, build_at, test_at, fp_files)
+              seq, prev_hash, chain, save_count, save_times, build_at, test_at, fp_files, key_hash)
            VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,
                    ?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30,?31,
-                   ?32,?33,?34,?35,?36,?37,?38,?39,?40,?41,?42,?43)`,
+                   ?32,?33,?34,?35,?36,?37,?38,?39,?40,?41,?42,?43,?44)`,
         )
         .bind(
           projectId,
@@ -394,6 +394,7 @@ ingest.post('/v1/snapshots', requireAgentKey, async (c) => {
           s.build_at || null,
           s.test_at || null,
           s.seq !== null ? s.prints.length : null,
+          c.get('keyHash') ?? null,
         ),
     );
 

@@ -127,6 +127,34 @@ api.get('/api/projects', async (c) => {
 });
 
 /**
+ * Snapshot CLI active time per local day (`tz` = UTC offset in minutes),
+ * across every project. Sessions are cut exactly as /api/projects cuts them;
+ * each gap between two changes inside a session counts toward the day the
+ * later change fell on, so the days add up to the projects' active time.
+ */
+api.get('/api/daily', async (c) => {
+  const gap = Number(c.env.SESSION_GAP_SECONDS) || 900;
+  const tz = Math.max(-840, Math.min(840, Number(c.req.query('tz')) || 0)) * 60;
+  const { results } = await c.env.DB.prepare(
+    `SELECT s.project_id AS p, s.captured_at AS t
+       FROM snapshots s JOIN projects p ON p.id = s.project_id
+      WHERE p.account_id = ?1 AND s.captured_at >= ?2 AND s.unchanged = 0
+      ORDER BY s.project_id, s.captured_at ASC`,
+  )
+    .bind(c.get('accountId'), windowStart(c, 14))
+    .all<{ p: number; t: number }>();
+
+  const days = new Map<string, number>();
+  for (let i = 1; i < results.length; i++) {
+    const [a, b] = [results[i - 1], results[i]];
+    if (a.p !== b.p || b.t - a.t > gap) continue;
+    const day = new Date((b.t + tz) * 1000).toISOString().slice(0, 10);
+    days.set(day, (days.get(day) ?? 0) + b.t - a.t);
+  }
+  return c.json({ daily: [...days].map(([day, seconds]) => ({ day, seconds })) });
+});
+
+/**
  * Total session length over ascending capture times of changed snapshots:
  * split wherever two are more than `gap` apart, each session counted from its
  * first change to its last. Equal to summing /sessions over the same window.

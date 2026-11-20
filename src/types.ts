@@ -33,7 +33,11 @@ export interface Env {
  * viewing as) or requireAgentKey (from the key), and every query that touches
  * user data is scoped by it.
  */
-export type AppEnv = { Bindings: Env; Variables: { accountId: string } };
+export type AppEnv = {
+  Bindings: Env;
+  /** keyHash is set only on agent requests: the key that authenticated them. */
+  Variables: { accountId: string; keyHash?: string };
+};
 
 /**
  * One file record as stored in a tree's file list. Path is a hash, never the

@@ -322,6 +322,15 @@ export const getRhythm = (name: string, days: number) =>
 
 export const getHackatime = (days: number) => get<Hackatime>(`/api/hackatime?days=${days}&tz=${tz()}`);
 
+/** One project's Hackatime editor time per local day (at most the last 90). */
+export type HackatimeProject =
+  | { configured: false }
+  | { configured: true; error: 'not_found' | 'private' | 'bad_key' | 'unavailable' }
+  | { configured: true; error?: undefined; daily: { day: string; seconds: number }[]; hours: number[] };
+
+export const getHackatimeProject = (name: string, days: number) =>
+  get<HackatimeProject>(`/api/hackatime/project?name=${encodeURIComponent(name)}&days=${days}&tz=${tz()}`);
+
 export const getSessions = (name: string, days: number) =>
   get<{ sessions: SessionRow[]; gap_seconds: number }>(
     `/api/projects/${encodeURIComponent(name)}/sessions?days=${days}`,

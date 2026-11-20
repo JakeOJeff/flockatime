@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import type { AppEnv } from './types';
 import { authOn, isOwner, requireDashboard, sessionUser } from './auth';
 import { MAX_DAYS, tzOffsetMinutes } from './api';
@@ -26,6 +26,7 @@ const HT = 'https://hackatime.hackclub.com/api/v1';
 export const hackatime = new Hono<AppEnv>();
 
 hackatime.use('/api/hackatime', requireDashboard);
+hackatime.use('/api/hackatime/project', requireDashboard);
 
 interface Slice {
   name: string;
@@ -58,7 +59,8 @@ const slim = (rows: Slice[] | undefined) =>
     .filter((r) => r.total_seconds > 0)
     .map(({ name, total_seconds, percent }) => ({ name, total_seconds, percent }));
 
-hackatime.get('/api/hackatime', async (c) => {
+/** Whose Hackatime to read and how, or null when there is nobody to ask for. */
+async function resolve(c: Context<AppEnv>) {
   const session = authOn(c.env) ? await sessionUser(c) : null;
   // An admin viewing as someone (see requireDashboard) gets that account's
   // Hackatime, decided by that account's email, never the admin's own.
@@ -75,56 +77,28 @@ hackatime.get('/api/hackatime', async (c) => {
   const key = owner ? c.env.HACKATIME_API_KEY : undefined;
   const user = owner ? c.env.HACKATIME_USER : undefined;
   const who = key ? 'my' : user || (session ? account : undefined);
-  if (!who) return c.json({ configured: false });
-  const source = key ? 'api_key' : user ? 'username' : 'hack_club';
-
-  // 3650 days is the dashboard's "All time".
-  const days = Math.min(Math.max(Number(c.req.query('days') ?? 7) || 7, 1), MAX_DAYS);
-  const tz = tzOffsetMinutes(c);
-  const now = Math.floor(Date.now() / 1000);
-  const from = now - days * 86400;
-  const range = new URLSearchParams({
-    start_date: new Date(from * 1000).toISOString(),
-    end_date: new Date(now * 1000).toISOString(),
-  });
-  // Spans only feed the daily chart, which never shows more than 90 days, so
-  // a long range does not drag years of heartbeats across the wire.
-  const spansFrom = Math.max(from, now - DAILY_DAYS * 86400);
-  const spansRange = new URLSearchParams({
-    start_date: new Date(spansFrom * 1000).toISOString(),
-    end_date: new Date(now * 1000).toISOString(),
-  });
+  if (!who) return null;
   const headers: HeadersInit = { accept: 'application/json' };
   if (key) headers.authorization = `Bearer ${key}`;
-  const base = `${HT}/users/${encodeURIComponent(who)}`;
+  return {
+    source: key ? 'api_key' : user ? 'username' : 'hack_club',
+    headers,
+    base: `${HT}/users/${encodeURIComponent(who)}`,
+  };
+}
 
-  const [statsRes, spansRes] = await Promise.all([
-    fetch(`${base}/stats?features=languages,projects,editors,operating_systems,categories&${range}`, { headers }),
-    fetch(`${base}/heartbeats/spans?${spansRange}`, { headers }),
-  ]);
+const errorFor = (status: number) =>
+  status === 404 ? 'not_found' : status === 403 ? 'private' : status === 401 ? 'bad_key' : 'unavailable';
 
-  if (!statsRes.ok || !spansRes.ok) {
-    const status = !statsRes.ok ? statsRes.status : spansRes.status;
-    const error =
-      status === 404
-        ? 'not_found'
-        : status === 403
-          ? 'private'
-          : status === 401
-            ? 'bad_key'
-            : 'unavailable';
-    return c.json({ configured: true, source, error });
-  }
-
-  const stats = ((await statsRes.json()) as HtStats).data;
-  const { spans } = (await spansRes.json()) as { spans: Span[] };
-
-  // Bucket span time by the viewer's local day and hour, splitting any span
-  // that crosses an hour boundary so a long stretch lands where it happened.
+/**
+ * Span time by the viewer's local day and hour, splitting any span that
+ * crosses an hour boundary so a long stretch lands where it happened.
+ */
+function bucket(spans: Span[], from: number, now: number, tz: number) {
   const daily = new Map<string, number>();
   const hours = new Array<number>(24).fill(0);
-  for (const s of spans ?? []) {
-    let t = Math.max(s.start_time, spansFrom);
+  for (const s of spans) {
+    let t = Math.max(s.start_time, from);
     const end = Math.min(s.end_time, now);
     while (t < end) {
       const next = Math.min(end, (Math.floor((t + tz * 60) / 3600) + 1) * 3600 - tz * 60);
@@ -135,6 +109,47 @@ hackatime.get('/api/hackatime', async (c) => {
       t = next;
     }
   }
+  return {
+    daily: [...daily.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([day, seconds]) => ({ day, seconds: Math.round(seconds) })),
+    hours: hours.map(Math.round),
+  };
+}
+
+const isoRange = (from: number, to: number) => ({
+  start_date: new Date(from * 1000).toISOString(),
+  end_date: new Date(to * 1000).toISOString(),
+});
+
+hackatime.get('/api/hackatime', async (c) => {
+  const who = await resolve(c);
+  if (!who) return c.json({ configured: false });
+  const { source, headers, base } = who;
+
+  // 3650 days is the dashboard's "All time".
+  const days = Math.min(Math.max(Number(c.req.query('days') ?? 7) || 7, 1), MAX_DAYS);
+  const tz = tzOffsetMinutes(c);
+  const now = Math.floor(Date.now() / 1000);
+  const from = now - days * 86400;
+  const range = new URLSearchParams(isoRange(from, now));
+  // Spans only feed the daily chart, which never shows more than 90 days, so
+  // a long range does not drag years of heartbeats across the wire.
+  const spansFrom = Math.max(from, now - DAILY_DAYS * 86400);
+  const spansRange = new URLSearchParams(isoRange(spansFrom, now));
+
+  const [statsRes, spansRes] = await Promise.all([
+    fetch(`${base}/stats?features=languages,projects,editors,operating_systems,categories&${range}`, { headers }),
+    fetch(`${base}/heartbeats/spans?${spansRange}`, { headers }),
+  ]);
+
+  if (!statsRes.ok || !spansRes.ok) {
+    return c.json({ configured: true, source, error: errorFor(!statsRes.ok ? statsRes.status : spansRes.status) });
+  }
+
+  const stats = ((await statsRes.json()) as HtStats).data;
+  const { spans } = (await spansRes.json()) as { spans: Span[] };
+  const { daily, hours } = bucket(spans ?? [], spansFrom, now, tz);
 
   return c.json({
     configured: true,
@@ -148,9 +163,29 @@ hackatime.get('/api/hackatime', async (c) => {
     editors: slim(stats.editors),
     operating_systems: slim(stats.operating_systems),
     categories: slim(stats.categories),
-    daily: [...daily.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([day, seconds]) => ({ day, seconds: Math.round(seconds) })),
-    hours: hours.map(Math.round),
+    daily,
+    hours,
   });
+});
+
+/**
+ * One project's editor time per local day, for the project page. Hackatime's
+ * spans endpoint filters to an exact project name; like the main chart, it
+ * reaches back at most 90 days.
+ */
+hackatime.get('/api/hackatime/project', async (c) => {
+  const who = await resolve(c);
+  if (!who) return c.json({ configured: false });
+  const name = c.req.query('name');
+  if (!name) return c.json({ error: 'name is required' }, 400);
+
+  const days = Math.min(Math.max(Number(c.req.query('days') ?? 7) || 7, 1), DAILY_DAYS);
+  const tz = tzOffsetMinutes(c);
+  const now = Math.floor(Date.now() / 1000);
+  const from = now - days * 86400;
+  const q = new URLSearchParams({ ...isoRange(from, now), project: name });
+  const res = await fetch(`${who.base}/heartbeats/spans?${q}`, { headers: who.headers });
+  if (!res.ok) return c.json({ configured: true, source: who.source, error: errorFor(res.status) });
+  const { spans } = (await res.json()) as { spans: Span[] };
+  return c.json({ configured: true, source: who.source, ...bucket(spans ?? [], from, now, tz) });
 });
